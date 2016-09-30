@@ -204,8 +204,7 @@ trait IssuesControllerBase extends ControllerBase {
     getIssue(repository.owner, repository.name, params("id")) map { x =>
       if(isEditable(x.userName, x.repositoryName, x.openedUserName)){
         params.get("dataType") collect {
-          case t if t == "html" => html.editissue(
-              x.content, x.issueId, x.userName, x.repositoryName)
+          case t if t == "html" => html.editissue(x.content, x.issueId, repository)
         } getOrElse {
           contentType = formats("json")
           org.json4s.jackson.Serialization.write(
@@ -232,8 +231,7 @@ trait IssuesControllerBase extends ControllerBase {
     getComment(repository.owner, repository.name, params("id")) map { x =>
       if(isEditable(x.userName, x.repositoryName, x.commentedUserName)){
         params.get("dataType") collect {
-          case t if t == "html" => html.editcomment(
-              x.content, x.commentId, x.userName, x.repositoryName)
+          case t if t == "html" => html.editcomment(x.content, x.commentId, repository)
         } getOrElse {
           contentType = formats("json")
           org.json4s.jackson.Serialization.write(
@@ -365,16 +363,7 @@ trait IssuesControllerBase extends ControllerBase {
       val sessionKey = Keys.Session.Issues(owner, repoName)
 
       // retrieve search condition
-      val condition = session.putAndGet(sessionKey,
-        if(request.hasQueryString){
-          val q = request.getParameter("q")
-          if(q == null || q.trim.isEmpty){
-            IssueSearchCondition(request)
-          } else {
-            IssueSearchCondition(q, getMilestones(owner, repoName).map(x => (x.title, x.milestoneId)).toMap)
-          }
-        } else session.getAs[IssueSearchCondition](sessionKey).getOrElse(IssueSearchCondition())
-      )
+      val condition = IssueSearchCondition(request)
 
       html.list(
           "issues",

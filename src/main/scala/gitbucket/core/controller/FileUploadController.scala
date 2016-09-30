@@ -6,9 +6,11 @@ import gitbucket.core.servlet.Database
 import gitbucket.core.util._
 import gitbucket.core.util.ControlUtil._
 import gitbucket.core.util.Directory._
+import gitbucket.core.util.Implicits._
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.dircache.DirCache
 import org.eclipse.jgit.lib.{FileMode, Constants}
+import org.scalatra
 import org.scalatra._
 import org.scalatra.servlet.{MultipartConfig, FileUploadSupport, FileItem}
 import org.apache.commons.io.{IOUtils, FileUtils}
@@ -71,9 +73,19 @@ class FileUploadController extends ScalatraServlet with FileUploadSupport with R
               fileName
             }
           }
-        }, FileUtil.isImage)
+        }, FileUtil.isUploadableType)
       }
     } getOrElse BadRequest
+  }
+
+  post("/import") {
+    import JDBCUtil._
+    session.get(Keys.Session.LoginAccount).collect { case loginAccount: Account if loginAccount.isAdmin =>
+      execute({ (file, fileId) =>
+        request2Session(request).conn.importAsSQL(file.getInputStream)
+      }, _ => true)
+    }
+    redirect("/admin/data")
   }
 
   private def collaboratorsOnly(owner: String, repository: String, loginAccount: Account)(action: => Any): Any = {

@@ -2,7 +2,7 @@ package gitbucket.core.servlet
 
 import javax.servlet._
 import javax.servlet.http.HttpServletRequest
-import com.mchange.v2.c3p0.ComboPooledDataSource
+import com.zaxxer.hikari._
 import gitbucket.core.util.DatabaseConfig
 import org.scalatra.ScalatraBase
 import org.slf4j.LoggerFactory
@@ -46,14 +46,21 @@ object Database {
 
   private val logger = LoggerFactory.getLogger(Database.getClass)
 
-  private val dataSource: ComboPooledDataSource = {
-    val ds = new ComboPooledDataSource
-    ds.setDriverClass(DatabaseConfig.driver)
-    ds.setJdbcUrl(DatabaseConfig.url)
-    ds.setUser(DatabaseConfig.user)
-    ds.setPassword(DatabaseConfig.password)
+  private val dataSource: HikariDataSource = {
+    val config = new HikariConfig()
+    config.setDriverClassName(DatabaseConfig.jdbcDriver)
+    config.setJdbcUrl(DatabaseConfig.url)
+    config.setUsername(DatabaseConfig.user)
+    config.setPassword(DatabaseConfig.password)
+    config.setAutoCommit(false)
+    DatabaseConfig.connectionTimeout.foreach(config.setConnectionTimeout)
+    DatabaseConfig.idleTimeout.foreach(config.setIdleTimeout)
+    DatabaseConfig.maxLifetime.foreach(config.setMaxLifetime)
+    DatabaseConfig.minimumIdle.foreach(config.setMinimumIdle)
+    DatabaseConfig.maximumPoolSize.foreach(config.setMaximumPoolSize)
+
     logger.debug("load database connection pool")
-    ds
+    new HikariDataSource(config)
   }
 
   private val db: SlickDatabase = {

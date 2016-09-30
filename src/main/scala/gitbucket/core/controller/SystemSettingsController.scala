@@ -1,8 +1,10 @@
 package gitbucket.core.controller
 
+import java.io.FileInputStream
+
 import gitbucket.core.admin.html
-import gitbucket.core.service.{AccountService, SystemSettingsService, RepositoryService}
-import gitbucket.core.util.AdminAuthenticator
+import gitbucket.core.service.{AccountService, RepositoryService, SystemSettingsService}
+import gitbucket.core.util.{AdminAuthenticator, Mailer}
 import gitbucket.core.ssh.SshServer
 import gitbucket.core.plugin.PluginRegistry
 import SystemSettingsService._
@@ -11,7 +13,7 @@ import gitbucket.core.util.ControlUtil._
 import gitbucket.core.util.Directory._
 import gitbucket.core.util.StringUtil._
 import io.github.gitbucket.scalatra.forms._
-import org.apache.commons.io.FileUtils
+import org.apache.commons.io.{FileUtils, IOUtils}
 import org.scalatra.i18n.Messages
 
 class SystemSettingsController extends SystemSettingsControllerBase
@@ -68,12 +70,22 @@ trait SystemSettingsControllerBase extends AccountManagementControllerBase {
     ).flatten
   }
 
-  private val pluginForm = mapping(
-    "pluginId" -> list(trim(label("", text())))
-  )(PluginForm.apply)
+  private val sendMailForm = mapping(
+    "smtp"        -> mapping(
+      "host"        -> trim(label("SMTP Host", text(required))),
+      "port"        -> trim(label("SMTP Port", optional(number()))),
+      "user"        -> trim(label("SMTP User", optional(text()))),
+      "password"    -> trim(label("SMTP Password", optional(text()))),
+      "ssl"         -> trim(label("Enable SSL", optional(boolean()))),
+      "fromAddress" -> trim(label("FROM Address", optional(text()))),
+      "fromName"    -> trim(label("FROM Name", optional(text())))
+    )(Smtp.apply),
+    "testAddress" -> trim(label("", text(required)))
+  )(SendMailForm.apply)
 
-  case class PluginForm(pluginIds: List[String])
+  case class SendMailForm(smtp: Smtp, testAddress: String)
 
+  case class DataExportForm(tableNames: List[String])
 
   case class NewUserForm(userName: String, password: String, fullName: String,
                          mailAddress: String, isAdmin: Boolean,
@@ -91,7 +103,7 @@ trait SystemSettingsControllerBase extends AccountManagementControllerBase {
 
 
   val newUserForm = mapping(
-    "userName"    -> trim(label("Username"     ,text(required, maxlength(100), identifier, uniqueUserName))),
+    "userName"    -> trim(label("Username"     ,text(required, maxlength(100), identifier, uniqueUserName, reservedNames))),
     "password"    -> trim(label("Password"     ,text(required, maxlength(20)))),
     "fullName"    -> trim(label("Full Name"    ,text(required, maxlength(100)))),
     "mailAddress" -> trim(label("Mail Address" ,text(required, maxlength(100), uniqueMailAddress()))),
@@ -113,7 +125,7 @@ trait SystemSettingsControllerBase extends AccountManagementControllerBase {
   )(EditUserForm.apply)
 
   val newGroupForm = mapping(
-    "groupName" -> trim(label("Group name" ,text(required, maxlength(100), identifier, uniqueUserName))),
+    "groupName" -> trim(label("Group name" ,text(required, maxlength(100), identifier, uniqueUserName, reservedNames))),
     "url"       -> trim(label("URL"        ,optional(text(maxlength(200))))),
     "fileId"    -> trim(label("File ID"    ,optional(text()))),
     "members"   -> trim(label("Members"    ,text(required, members)))
@@ -149,6 +161,18 @@ trait SystemSettingsControllerBase extends AccountManagementControllerBase {
     redirect("/admin/system")
   })
 
+  post("/admin/system/sendmail", sendMailForm)(adminOnly { form =>
+    try {
+      new Mailer(form.smtp).send(form.testAddress,
+        "Test message from GitBucket", "This is a test message from GitBucket.")
+
+      "Test mail has been sent to: " + form.testAddress
+
+    } catch {
+      case e: Exception => "[Error] " + e.toString
+    }
+  })
+
   get("/admin/plugins")(adminOnly {
     html.plugins(PluginRegistry().getPlugins())
   })
@@ -176,36 +200,39 @@ trait SystemSettingsControllerBase extends AccountManagementControllerBase {
 
   get("/admin/users/:userName/_edituser")(adminOnly {
     val userName = params("userName")
-    html.user(getAccountByUserName(userName, true))
+    html.user(getAccountByUserName(userName, true), flash.get("error"))
   })
 
   post("/admin/users/:name/_edituser", editUserForm)(adminOnly { form =>
     val userName = params("userName")
     getAccountByUserName(userName, true).map { account =>
+      if(account.isAdmin && (form.isRemoved || !form.isAdmin) && isLastAdministrator(account)){
+        flash += "error" -> "Account can't be turned off because this is last one administrator."
+        redirect(s"/admin/users/${userName}/_edituser")
+      } else {
+        if(form.isRemoved){
+          // Remove repositories
+          //        getRepositoryNamesOfUser(userName).foreach { repositoryName =>
+          //          deleteRepository(userName, repositoryName)
+          //          FileUtils.deleteDirectory(getRepositoryDir(userName, repositoryName))
+          //          FileUtils.deleteDirectory(getWikiRepositoryDir(userName, repositoryName))
+          //          FileUtils.deleteDirectory(getTemporaryDir(userName, repositoryName))
+          //        }
+          // Remove from GROUP_MEMBER, COLLABORATOR and REPOSITORY
+          removeUserRelatedData(userName)
+        }
 
-      if(form.isRemoved){
-        // Remove repositories
-        //        getRepositoryNamesOfUser(userName).foreach { repositoryName =>
-        //          deleteRepository(userName, repositoryName)
-        //          FileUtils.deleteDirectory(getRepositoryDir(userName, repositoryName))
-        //          FileUtils.deleteDirectory(getWikiRepositoryDir(userName, repositoryName))
-        //          FileUtils.deleteDirectory(getTemporaryDir(userName, repositoryName))
-        //        }
-        // Remove from GROUP_MEMBER, COLLABORATOR and REPOSITORY
-        removeUserRelatedData(userName)
+        updateAccount(account.copy(
+          password     = form.password.map(sha1).getOrElse(account.password),
+          fullName     = form.fullName,
+          mailAddress  = form.mailAddress,
+          isAdmin      = form.isAdmin,
+          url          = form.url,
+          isRemoved    = form.isRemoved))
+
+        updateImage(userName, form.fileId, form.clearImage)
+        redirect("/admin/users")
       }
-
-      updateAccount(account.copy(
-        password     = form.password.map(sha1).getOrElse(account.password),
-        fullName     = form.fullName,
-        mailAddress  = form.mailAddress,
-        isAdmin      = form.isAdmin,
-        url          = form.url,
-        isRemoved    = form.isRemoved))
-
-      updateImage(userName, form.fileId, form.clearImage)
-      redirect("/admin/users")
-
     } getOrElse NotFound
   })
 
@@ -266,6 +293,27 @@ trait SystemSettingsControllerBase extends AccountManagementControllerBase {
 
       } getOrElse NotFound
     }
+  })
+
+  get("/admin/data")(adminOnly {
+    import gitbucket.core.util.JDBCUtil._
+    val session = request2Session(request)
+    html.data(session.conn.allTableNames())
+  })
+
+  post("/admin/export")(adminOnly {
+    import gitbucket.core.util.JDBCUtil._
+    val file = request2Session(request).conn.exportAsSQL(request.getParameterValues("tableNames").toSeq)
+
+    contentType = "application/octet-stream"
+    response.setHeader("Content-Disposition", "attachment; filename=" + file.getName)
+    response.setContentLength(file.length.toInt)
+
+    using(new FileInputStream(file)){ in =>
+      IOUtils.copy(in, response.outputStream)
+    }
+
+    ()
   })
 
   private def members: Constraint = new Constraint(){

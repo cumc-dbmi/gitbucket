@@ -117,15 +117,20 @@ trait RepositoryViewerControllerBase extends ControllerBase {
   /**
    * Displays the file list of the repository root and the default branch.
    */
-  get("/:owner/:repository")(referrersOnly {
-    fileList(_)
-  })
+  get("/:owner/:repository") {
+    params.get("go-get") match {
+      case Some("1") => defining(request.paths){ paths =>
+        getRepository(paths(0), paths(1)).map(gitbucket.core.html.goget(_))getOrElse NotFound()
+      }
+      case _ => referrersOnly(fileList(_))
+    }
+  }
 
   /**
    * Displays the file list of the specified path and branch.
    */
   get("/:owner/:repository/tree/*")(referrersOnly { repository =>
-    val (id, path) = splitPath(repository, multiParams("splat").head)
+    val (id, path) = repository.splitPath(multiParams("splat").head)
     if(path.isEmpty){
       fileList(repository, id)
     } else {
@@ -137,7 +142,7 @@ trait RepositoryViewerControllerBase extends ControllerBase {
    * Displays the commit list of the specified resource.
    */
   get("/:owner/:repository/commits/*")(referrersOnly { repository =>
-    val (branchName, path) = splitPath(repository, multiParams("splat").head)
+    val (branchName, path) = repository.splitPath(multiParams("splat").head)
     val page = params.get("page").flatMap(_.toIntOpt).getOrElse(1)
 
     using(Git.open(getRepositoryDir(repository.owner, repository.name))){ git =>
@@ -153,7 +158,7 @@ trait RepositoryViewerControllerBase extends ControllerBase {
   })
 
   get("/:owner/:repository/new/*")(collaboratorsOnly { repository =>
-    val (branch, path) = splitPath(repository, multiParams("splat").head)
+    val (branch, path) = repository.splitPath(multiParams("splat").head)
     val protectedBranch = getProtectedBranchInfo(repository.owner, repository.name, branch).needStatusCheck(context.loginAccount.get.userName)
     html.editor(branch, repository, if(path.length == 0) Nil else path.split("/").toList,
       None, JGitUtil.ContentInfo("text", None, Some("UTF-8")),
@@ -161,7 +166,7 @@ trait RepositoryViewerControllerBase extends ControllerBase {
   })
 
   get("/:owner/:repository/edit/*")(collaboratorsOnly { repository =>
-    val (branch, path) = splitPath(repository, multiParams("splat").head)
+    val (branch, path) = repository.splitPath(multiParams("splat").head)
     val protectedBranch = getProtectedBranchInfo(repository.owner, repository.name, branch).needStatusCheck(context.loginAccount.get.userName)
 
     using(Git.open(getRepositoryDir(repository.owner, repository.name))){ git =>
@@ -177,7 +182,7 @@ trait RepositoryViewerControllerBase extends ControllerBase {
   })
 
   get("/:owner/:repository/remove/*")(collaboratorsOnly { repository =>
-    val (branch, path) = splitPath(repository, multiParams("splat").head)
+    val (branch, path) = repository.splitPath(multiParams("splat").head)
     using(Git.open(getRepositoryDir(repository.owner, repository.name))){ git =>
       val revCommit = JGitUtil.getRevCommitFromId(git, git.getRepository.resolve(branch))
 
@@ -235,7 +240,7 @@ trait RepositoryViewerControllerBase extends ControllerBase {
   })
 
   get("/:owner/:repository/raw/*")(referrersOnly { repository =>
-    val (id, path) = splitPath(repository, multiParams("splat").head)
+    val (id, path) = repository.splitPath(multiParams("splat").head)
     using(Git.open(getRepositoryDir(repository.owner, repository.name))){ git =>
       val revCommit = JGitUtil.getRevCommitFromId(git, git.getRepository.resolve(id))
       getPathObjectId(git, path, revCommit).flatMap { objectId =>
@@ -253,7 +258,7 @@ trait RepositoryViewerControllerBase extends ControllerBase {
    * Displays the file content of the specified branch or commit.
    */
   val blobRoute = get("/:owner/:repository/blob/*")(referrersOnly { repository =>
-    val (id, path) = splitPath(repository, multiParams("splat").head)
+    val (id, path) = repository.splitPath(multiParams("splat").head)
     val raw = params.get("raw").getOrElse("false").toBoolean
     using(Git.open(getRepositoryDir(repository.owner, repository.name))){ git =>
       val revCommit = JGitUtil.getRevCommitFromId(git, git.getRepository.resolve(id))
@@ -285,7 +290,7 @@ trait RepositoryViewerControllerBase extends ControllerBase {
    * Blame data.
    */
   ajaxGet("/:owner/:repository/get-blame/*")(referrersOnly { repository =>
-    val (id, path) = splitPath(repository, multiParams("splat").head)
+    val (id, path) = repository.splitPath(multiParams("splat").head)
     contentType = formats("json")
     using(Git.open(getRepositoryDir(repository.owner, repository.name))){ git =>
       val last = git.log.add(git.getRepository.resolve(id)).addPath(path).setMaxCount(1).call.iterator.next.name
@@ -376,8 +381,7 @@ trait RepositoryViewerControllerBase extends ControllerBase {
     getCommitComment(repository.owner, repository.name, params("id")) map { x =>
       if(isEditable(x.userName, x.repositoryName, x.commentedUserName)){
         params.get("dataType") collect {
-          case t if t == "html" => html.editcomment(
-            x.content, x.commentId, x.userName, x.repositoryName)
+          case t if t == "html" => html.editcomment(x.content, x.commentId, repository)
         } getOrElse {
           contentType = formats("json")
           org.json4s.jackson.Serialization.write(
@@ -526,17 +530,6 @@ trait RepositoryViewerControllerBase extends ControllerBase {
       Map("paths" -> JGitUtil.getAllFileListByTreeId(git, treeId))
     }
   })
-
-  private def splitPath(repository: RepositoryService.RepositoryInfo, path: String): (String, String) = {
-    val id = repository.branchList.collectFirst {
-      case branch if(path == branch || path.startsWith(branch + "/")) => branch
-    } orElse repository.tags.collectFirst {
-      case tag if(path == tag.name || path.startsWith(tag.name + "/")) => tag.name
-    } getOrElse path.split("/")(0)
-
-    (id, path.substring(id.length).stripPrefix("/"))
-  }
-
 
   private val readmeFiles = PluginRegistry().renderableExtensions.map { extension =>
     s"readme.${extension}"
@@ -690,8 +683,6 @@ trait RepositoryViewerControllerBase extends ControllerBase {
 
   private def isEditable(owner: String, repository: String, author: String)(implicit context: Context): Boolean =
     hasWritePermission(owner, repository, context.loginAccount) || author == context.loginAccount.get.userName
-
-
 
   override protected def renderUncaughtException(e: Throwable)(implicit request: HttpServletRequest, response: HttpServletResponse): Unit = {
     e.printStackTrace()

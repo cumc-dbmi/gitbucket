@@ -3,12 +3,14 @@ import org.eclipse.jetty.webapp.WebAppContext;
 
 import java.io.File;
 import java.net.URL;
+import java.net.InetSocketAddress;
 import java.security.ProtectionDomain;
 
 public class JettyLauncher {
     public static void main(String[] args) throws Exception {
         String host = null;
         int port = 8080;
+        InetSocketAddress address = null;
         String contextPath = "/";
         boolean forceHttps = false;
 
@@ -29,7 +31,13 @@ public class JettyLauncher {
             }
         }
 
-        Server server = new Server(port);
+        if(host != null) {
+            address = new InetSocketAddress(host, port);
+        } else {
+            address = new InetSocketAddress(port);
+        }
+
+        Server server = new Server(address);
 
 //        SelectChannelConnector connector = new SelectChannelConnector();
 //        if(host != null) {
@@ -43,10 +51,9 @@ public class JettyLauncher {
         WebAppContext context = new WebAppContext();
 
         File tmpDir = new File(getGitBucketHome(), "tmp");
-        if(tmpDir.exists()){
-            deleteDirectory(tmpDir);
+        if(!tmpDir.exists()){
+            tmpDir.mkdirs();
         }
-        tmpDir.mkdirs();
         context.setTempDirectory(tmpDir);
 
         ProtectionDomain domain = JettyLauncher.class.getProtectionDomain();
@@ -61,6 +68,8 @@ public class JettyLauncher {
         }
 
         server.setHandler(context);
+        server.setStopAtShutdown(true);
+        server.setStopTimeout(7_000);
         server.start();
         server.join();
     }

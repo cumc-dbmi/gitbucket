@@ -73,7 +73,7 @@ trait SystemSettingsService {
         getValue(props, AllowAccountRegistration, false),
         getValue(props, AllowAnonymousAccess, true),
         getValue(props, IsCreateRepoOptionPublic, true),
-        getValue(props, Gravatar, true),
+        getValue(props, Gravatar, false),
         getValue(props, Notification, false),
         getOptionValue[Int](props, ActivityLogLimit, None),
         getValue(props, Ssh, false),
@@ -141,7 +141,11 @@ object SystemSettingsService {
       for {
         host <- sshHost if ssh
       }
-      yield SshAddress(host, sshPort.getOrElse(DefaultSshPort))
+      yield SshAddress(
+        host,
+        sshPort.getOrElse(DefaultSshPort),
+        "git"
+      )
   }
 
   case class Ldap(
@@ -169,7 +173,8 @@ object SystemSettingsService {
 
   case class SshAddress(
     host:String,
-    port:Int)
+    port:Int,
+    genericUser:String)
 
   val DefaultSshPort = 29418
   val DefaultSmtpPort = 25

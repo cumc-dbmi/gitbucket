@@ -202,7 +202,7 @@ trait PullRequestsControllerBase extends ControllerBase {
 
                 // close issue by commit message
                 if(pullreq.requestBranch == repository.repository.defaultBranch){
-                  commits.map{ commit =>
+                  commits.map { commit =>
                     closeIssuesFromMessage(commit.fullMessage, loginAccount.userName, owner, name)
                   }
                 }
@@ -255,10 +255,7 @@ trait PullRequestsControllerBase extends ControllerBase {
               commits.flatten.foreach { commit =>
                 closeIssuesFromMessage(commit.fullMessage, loginAccount.userName, owner, name)
               }
-              issue.content match {
-                case Some(content) => closeIssuesFromMessage(content, loginAccount.userName, owner, name)
-                case _ =>
-              }
+              closeIssuesFromMessage(issue.title + " " + issue.content.getOrElse(""), loginAccount.userName, owner, name)
               closeIssuesFromMessage(form.message, loginAccount.userName, owner, name)
             }
 
@@ -354,7 +351,15 @@ trait PullRequestsControllerBase extends ControllerBase {
               originRepository.owner, originRepository.name, oldId.getName,
               forkedRepository.owner, forkedRepository.name, newId.getName)
 
+            val title = if(commits.flatten.length == 1){
+              commits.flatten.head.shortMessage
+            } else {
+              val text = forkedId.replaceAll("[\\-_]", " ")
+              text.substring(0, 1).toUpperCase + text.substring(1)
+            }
+
             html.compare(
+              title,
               commits,
               diffs,
               (forkedRepository.repository.originUserName, forkedRepository.repository.originRepositoryName) match {
@@ -515,10 +520,7 @@ trait PullRequestsControllerBase extends ControllerBase {
       val sessionKey = Keys.Session.Pulls(owner, repoName)
 
       // retrieve search condition
-      val condition = session.putAndGet(sessionKey,
-        if(request.hasQueryString) IssueSearchCondition(request)
-        else session.getAs[IssueSearchCondition](sessionKey).getOrElse(IssueSearchCondition())
-      )
+      val condition = IssueSearchCondition(request)
 
       gitbucket.core.issues.html.list(
         "pulls",

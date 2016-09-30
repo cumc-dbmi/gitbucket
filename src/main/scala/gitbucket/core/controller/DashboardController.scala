@@ -15,20 +15,7 @@ trait DashboardControllerBase extends ControllerBase {
     with UsersAuthenticator =>
 
   get("/dashboard/issues")(usersOnly {
-    val q = request.getParameter("q")
-    val account = context.loginAccount.get
-    Option(q).map { q =>
-      val condition = IssueSearchCondition(q, Map[String, Int]())
-      q match {
-        case q if(q.contains("is:pr")) => redirect(s"/dashboard/pulls?q=${StringUtil.urlEncode(q)}")
-        case q if(q.contains(s"author:${account.userName}")) => redirect(s"/dashboard/issues/created_by${condition.toURL}")
-        case q if(q.contains(s"assignee:${account.userName}")) => redirect(s"/dashboard/issues/assigned${condition.toURL}")
-        case q if(q.contains(s"mentions:${account.userName}")) => redirect(s"/dashboard/issues/mentioned${condition.toURL}")
-        case _ => searchIssues("created_by")
-      }
-    } getOrElse {
-      searchIssues("created_by")
-    }
+    searchIssues("created_by")
   })
 
   get("/dashboard/issues/assigned")(usersOnly {
@@ -44,20 +31,7 @@ trait DashboardControllerBase extends ControllerBase {
   })
 
   get("/dashboard/pulls")(usersOnly {
-    val q = request.getParameter("q")
-    val account = context.loginAccount.get
-    Option(q).map { q =>
-      val condition = IssueSearchCondition(q, Map[String, Int]())
-      q match {
-        case q if(q.contains("is:issue")) => redirect(s"/dashboard/issues?q=${StringUtil.urlEncode(q)}")
-        case q if(q.contains(s"author:${account.userName}")) => redirect(s"/dashboard/pulls/created_by${condition.toURL}")
-        case q if(q.contains(s"assignee:${account.userName}")) => redirect(s"/dashboard/pulls/assigned${condition.toURL}")
-        case q if(q.contains(s"mentions:${account.userName}")) => redirect(s"/dashboard/pulls/mentioned${condition.toURL}")
-        case _ => searchPullRequests("created_by")
-      }
-    } getOrElse {
-      searchPullRequests("created_by")
-    }
+    searchPullRequests("created_by")
   })
 
   get("/dashboard/pulls/created_by")(usersOnly {
@@ -73,19 +47,12 @@ trait DashboardControllerBase extends ControllerBase {
   })
 
   private def getOrCreateCondition(key: String, filter: String, userName: String) = {
-    val condition = session.putAndGet(key, if(request.hasQueryString){
-      val q = request.getParameter("q")
-      if(q == null){
-        IssueSearchCondition(request)
-      } else {
-        IssueSearchCondition(q, Map[String, Int]())
-      }
-    } else session.getAs[IssueSearchCondition](key).getOrElse(IssueSearchCondition()))
+    val condition = IssueSearchCondition(request)
 
     filter match {
-      case "assigned"  => condition.copy(assigned = Some(userName), author = None          , mentioned = None)
-      case "mentioned" => condition.copy(assigned = None          , author = None          , mentioned = Some(userName))
-      case _           => condition.copy(assigned = None          , author = Some(userName), mentioned = None)
+      case "assigned"  => condition.copy(assigned = Some(Some(userName)), author = None, mentioned = None)
+      case "mentioned" => condition.copy(assigned = None, author = None, mentioned = Some(userName))
+      case _           => condition.copy(assigned = None, author = Some(userName), mentioned = None)
     }
   }
 
@@ -103,7 +70,7 @@ trait DashboardControllerBase extends ControllerBase {
       countIssue(condition.copy(state = "open"  ), false, userRepos: _*),
       countIssue(condition.copy(state = "closed"), false, userRepos: _*),
       filter match {
-        case "assigned"  => condition.copy(assigned  = Some(userName))
+        case "assigned"  => condition.copy(assigned  = Some(Some(userName)))
         case "mentioned" => condition.copy(mentioned = Some(userName))
         case _           => condition.copy(author    = Some(userName))
       },
@@ -128,7 +95,7 @@ trait DashboardControllerBase extends ControllerBase {
       countIssue(condition.copy(state = "open"  ), true, allRepos: _*),
       countIssue(condition.copy(state = "closed"), true, allRepos: _*),
       filter match {
-        case "assigned"  => condition.copy(assigned  = Some(userName))
+        case "assigned"  => condition.copy(assigned  = Some(Some(userName)))
         case "mentioned" => condition.copy(mentioned = Some(userName))
         case _           => condition.copy(author    = Some(userName))
       },

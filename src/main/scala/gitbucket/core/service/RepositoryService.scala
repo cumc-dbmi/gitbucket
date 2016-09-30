@@ -36,7 +36,13 @@ trait RepositoryService { self: AccountService =>
         originUserName       = originUserName,
         originRepositoryName = originRepositoryName,
         parentUserName       = parentUserName,
-        parentRepositoryName = parentRepositoryName)
+        parentRepositoryName = parentRepositoryName,
+        enableIssues         = true,
+        externalIssuesUrl    = None,
+        enableWiki           = true,
+        allowWikiEditing     = true,
+        externalWikiUrl      = None
+      )
 
     IssueId insert (userName, repositoryName, 0)
   }
@@ -222,7 +228,7 @@ trait RepositoryService { self: AccountService =>
    * Include public repository, private own repository and private but collaborator repository.
    *
    * @param userName the user name of collaborator
-   * @return the repository infomation list
+   * @return the repository information list
    */
   def getAllRepositories(userName: String)(implicit s: Session): List[(String, String)] = {
     Repositories.filter { t1 =>
@@ -313,10 +319,12 @@ trait RepositoryService { self: AccountService =>
    * Save repository options.
    */
   def saveRepositoryOptions(userName: String, repositoryName: String,
-      description: Option[String], isPrivate: Boolean)(implicit s: Session): Unit =
+      description: Option[String], isPrivate: Boolean,
+      enableIssues: Boolean, externalIssuesUrl: Option[String],
+      enableWiki: Boolean, allowWikiEditing: Boolean, externalWikiUrl: Option[String])(implicit s: Session): Unit =
     Repositories.filter(_.byRepository(userName, repositoryName))
-      .map { r => (r.description.?, r.isPrivate, r.updatedDate) }
-      .update (description, isPrivate, currentDate)
+      .map { r => (r.description.?, r.isPrivate, r.enableIssues, r.externalIssuesUrl.?, r.enableWiki, r.allowWikiEditing, r.externalWikiUrl.?, r.updatedDate) }
+      .update (description, isPrivate, enableIssues, externalIssuesUrl, enableWiki, allowWikiEditing, externalWikiUrl, currentDate)
 
   def saveRepositoryDefaultBranch(userName: String, repositoryName: String,
       defaultBranch: String)(implicit s: Session): Unit =
@@ -412,14 +420,23 @@ object RepositoryService {
 
     def httpUrl(implicit context: Context): String = RepositoryService.httpUrl(owner, name)
     def sshUrl(implicit context: Context): Option[String] = RepositoryService.sshUrl(owner, name)
+
+    def splitPath(path: String): (String, String) = {
+      val id = branchList.collectFirst {
+        case branch if(path == branch || path.startsWith(branch + "/")) => branch
+      } orElse tags.collectFirst {
+        case tag if(path == tag.name || path.startsWith(tag.name + "/")) => tag.name
+      } getOrElse path.split("/")(0)
+
+      (id, path.substring(id.length).stripPrefix("/"))
+    }
+
   }
 
   def httpUrl(owner: String, name: String)(implicit context: Context): String = s"${context.baseUrl}/git/${owner}/${name}.git"
   def sshUrl(owner: String, name: String)(implicit context: Context): Option[String] =
     if(context.settings.ssh){
-      context.loginAccount.flatMap { loginAccount =>
-        context.settings.sshAddress.map { x => s"ssh://${loginAccount.userName}@${x.host}:${x.port}/${owner}/${name}.git" }
-      }
+      context.settings.sshAddress.map { x => s"ssh://${x.genericUser}@${x.host}:${x.port}/${owner}/${name}.git" }
     } else None
   def openRepoUrl(openUrl: String)(implicit context: Context): String = s"github-${context.platform}://openRepo/${openUrl}"
 

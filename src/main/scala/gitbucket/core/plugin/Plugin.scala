@@ -6,7 +6,7 @@ import gitbucket.core.model.Account
 import gitbucket.core.service.RepositoryService.RepositoryInfo
 import gitbucket.core.service.SystemSettingsService.SystemSettings
 import gitbucket.core.util.ControlUtil._
-import gitbucket.core.util.Version
+import io.github.gitbucket.solidbase.model.Version
 
 /**
  * Trait for define plugin interface.
@@ -150,6 +150,36 @@ abstract class Plugin {
   def dashboardTabs(registry: PluginRegistry, context: ServletContext, settings: SystemSettings): Seq[(Context) => Option[Link]] = Nil
 
   /**
+   * Override to add assets mappings.
+   */
+  val assetsMappings: Seq[(String, String)] = Nil
+
+  /**
+   * Override to add assets mappings.
+   */
+  def assetsMappings(registry: PluginRegistry, context: ServletContext, settings: SystemSettings): Seq[(String, String)] = Nil
+
+  /**
+   * Override to add text decorators.
+   */
+  val textDecorators: Seq[TextDecorator] = Nil
+
+  /**
+   * Override to add text decorators.
+   */
+  def textDecorators(registry: PluginRegistry, context: ServletContext, settings: SystemSettings): Seq[TextDecorator] = Nil
+
+  /**
+   * Override to add suggestion provider.
+   */
+  val suggestionProviders: Seq[SuggestionProvider] = Nil
+
+  /**
+   * Override to add suggestion provider.
+   */
+  def suggestionProviders(registry: PluginRegistry, context: ServletContext, settings: SystemSettings): Seq[SuggestionProvider] = Nil
+
+  /**
    * This method is invoked in initialization of plugin system.
    * Register plugin functionality to PluginRegistry.
    */
@@ -192,6 +222,15 @@ abstract class Plugin {
     }
     (dashboardTabs ++ dashboardTabs(registry, context, settings)).foreach { dashboardTab =>
       registry.addDashboardTab(dashboardTab)
+    }
+    (assetsMappings ++ assetsMappings(registry, context, settings)).foreach { assetMapping =>
+      registry.addAssetsMapping((assetMapping._1, assetMapping._2, getClass.getClassLoader))
+    }
+    (textDecorators ++ textDecorators(registry, context, settings)).foreach { textDecorator =>
+      registry.addTextDecorator(textDecorator)
+    }
+    (suggestionProviders ++ suggestionProviders(registry, context, settings)).foreach { suggestionProvider =>
+      registry.addSuggestionProvider(suggestionProvider)
     }
   }
 

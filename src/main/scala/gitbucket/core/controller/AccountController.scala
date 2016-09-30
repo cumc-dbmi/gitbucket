@@ -38,7 +38,7 @@ trait AccountControllerBase extends AccountManagementControllerBase {
   case class PersonalTokenForm(note: String)
 
   val newForm = mapping(
-    "userName"    -> trim(label("User name"    , text(required, maxlength(100), identifier, uniqueUserName))),
+    "userName"    -> trim(label("User name"    , text(required, maxlength(100), identifier, uniqueUserName, reservedNames))),
     "password"    -> trim(label("Password"     , text(required, maxlength(20)))),
     "fullName"    -> trim(label("Full Name"    , text(required, maxlength(100)))),
     "mailAddress" -> trim(label("Mail Address" , text(required, maxlength(100), uniqueMailAddress()))),
@@ -68,7 +68,7 @@ trait AccountControllerBase extends AccountManagementControllerBase {
   case class EditGroupForm(groupName: String, url: Option[String], fileId: Option[String], members: String, clearImage: Boolean)
 
   val newGroupForm = mapping(
-    "groupName" -> trim(label("Group name" ,text(required, maxlength(100), identifier, uniqueUserName))),
+    "groupName" -> trim(label("Group name" ,text(required, maxlength(100), identifier, uniqueUserName, reservedNames))),
     "url"       -> trim(label("URL"        ,optional(text(maxlength(200))))),
     "fileId"    -> trim(label("File ID"    ,optional(text()))),
     "members"   -> trim(label("Members"    ,text(required, members)))
@@ -155,7 +155,7 @@ trait AccountControllerBase extends AccountManagementControllerBase {
   get("/:userName/_edit")(oneselfOnly {
     val userName = params("userName")
     getAccountByUserName(userName).map { x =>
-      html.edit(x, flash.get("info"))
+      html.edit(x, flash.get("info"), flash.get("error"))
     } getOrElse NotFound
   })
 
@@ -178,7 +178,11 @@ trait AccountControllerBase extends AccountManagementControllerBase {
   get("/:userName/_delete")(oneselfOnly {
     val userName = params("userName")
 
-    getAccountByUserName(userName, true).foreach { account =>
+    getAccountByUserName(userName, true).map { account =>
+      if(isLastAdministrator(account)){
+        flash += "error" -> "Account can't be removed because this is last one administrator."
+        redirect(s"/${userName}/_edit")
+      } else {
 //      // Remove repositories
 //      getRepositoryNamesOfUser(userName).foreach { repositoryName =>
 //        deleteRepository(userName, repositoryName)
@@ -187,14 +191,12 @@ trait AccountControllerBase extends AccountManagementControllerBase {
 //        FileUtils.deleteDirectory(getTemporaryDir(userName, repositoryName))
 //      }
 //      // Remove from GROUP_MEMBER, COLLABORATOR and REPOSITORY
-//      removeUserRelatedData(userName)
-
-      removeUserRelatedData(userName)
-      updateAccount(account.copy(isRemoved = true))
-    }
-
-    session.invalidate
-    redirect("/")
+        removeUserRelatedData(userName)
+        updateAccount(account.copy(isRemoved = true))
+        session.invalidate
+        redirect("/")
+      }
+    } getOrElse NotFound
   })
 
   get("/:userName/_ssh")(oneselfOnly {
@@ -447,8 +449,8 @@ trait AccountControllerBase extends AccountManagementControllerBase {
 
   private def validPublicKey: Constraint = new Constraint(){
     override def validate(name: String, value: String, messages: Messages): Option[String] = SshUtil.str2PublicKey(value) match {
-     case Some(_) => None
-     case None => Some("Key is invalid.")
+     case Some(_) if !getAllKeys().exists(_.publicKey == value) => None
+     case _ => Some("Key is invalid.")
     }
   }
 

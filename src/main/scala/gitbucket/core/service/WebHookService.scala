@@ -1,6 +1,5 @@
 package gitbucket.core.service
 
-import java.io.ByteArrayInputStream
 import fr.brouillard.oss.security.xhub.XHub
 import fr.brouillard.oss.security.xhub.XHub.{XHubDigest, XHubConverter}
 import gitbucket.core.api._
@@ -22,6 +21,7 @@ import org.apache.http.HttpRequest
 import org.apache.http.HttpResponse
 import gitbucket.core.model.WebHookContentType
 import org.apache.http.client.entity.EntityBuilder
+import org.apache.http.entity.ContentType
 
 
 trait WebHookService {
@@ -97,7 +97,7 @@ trait WebHookService {
             }
           }
           try{
-            val httpClient = HttpClientBuilder.create.addInterceptorLast(itcp).build
+            val httpClient = HttpClientBuilder.create.useSystemProperties.addInterceptorLast(itcp).build
             logger.debug(s"start web hook invocation for ${webHook.url}")
             val httpPost = new HttpPost(webHook.url)
             logger.info(s"Content-Type: ${webHook.ctype.ctype}")
@@ -118,8 +118,8 @@ trait WebHookService {
                 }
               }
               case WebHookContentType.JSON => {
-            	  httpPost.setEntity(EntityBuilder.create().setText(json).build())
-                if (!webHook.token.isEmpty) {
+            	  httpPost.setEntity(EntityBuilder.create().setContentType(ContentType.APPLICATION_JSON).setText(json).build())
+                if (webHook.token.exists(_.trim.nonEmpty)) {
                   httpPost.addHeader("X-Hub-Signature", XHub.generateHeaderXHubToken(XHubConverter.HEXA_LOWERCASE, XHubDigest.SHA1, webHook.token.orNull, json.getBytes("UTF-8")))
                 }
               }

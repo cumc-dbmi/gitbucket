@@ -27,12 +27,26 @@ trait RepositorySettingsControllerBase extends ControllerBase {
     with OwnerAuthenticator with UsersAuthenticator =>
 
   // for repository options
-  case class OptionsForm(repositoryName: String, description: Option[String], isPrivate: Boolean)
+  case class OptionsForm(
+    repositoryName: String,
+    description: Option[String],
+    isPrivate: Boolean,
+    enableIssues: Boolean,
+    externalIssuesUrl: Option[String],
+    enableWiki: Boolean,
+    allowWikiEditing: Boolean,
+    externalWikiUrl: Option[String]
+  )
   
   val optionsForm = mapping(
-    "repositoryName" -> trim(label("Repository Name", text(required, maxlength(40), identifier, renameRepositoryName))),
-    "description"    -> trim(label("Description"    , optional(text()))),
-    "isPrivate"      -> trim(label("Repository Type", boolean()))
+    "repositoryName"    -> trim(label("Repository Name"    , text(required, maxlength(40), identifier, renameRepositoryName))),
+    "description"       -> trim(label("Description"        , optional(text()))),
+    "isPrivate"         -> trim(label("Repository Type"    , boolean())),
+    "enableIssues"      -> trim(label("Enable Issues"      , boolean())),
+    "externalIssuesUrl" -> trim(label("External Issues URL", optional(text(maxlength(200))))),
+    "enableWiki"        -> trim(label("Enable Wiki"        , boolean())),
+    "allowWikiEditing"  -> trim(label("Allow Wiki Editing" , boolean())),
+    "externalWikiUrl"   -> trim(label("External Wiki URL"  , optional(text(maxlength(200)))))
   )(OptionsForm.apply)
 
   // for default branch
@@ -92,7 +106,12 @@ trait RepositorySettingsControllerBase extends ControllerBase {
       form.description,
       repository.repository.parentUserName.map { _ =>
         repository.repository.isPrivate
-      } getOrElse form.isPrivate
+      } getOrElse form.isPrivate,
+      form.enableIssues,
+      form.externalIssuesUrl,
+      form.enableWiki,
+      form.allowWikiEditing,
+      form.externalWikiUrl
     )
     // Change repository name
     if(repository.name != form.repositoryName){
@@ -294,7 +313,7 @@ trait RepositorySettingsControllerBase extends ControllerBase {
    * Display the danger zone.
    */
   get("/:owner/:repository/settings/danger")(ownerOnly {
-    html.danger(_)
+    html.danger(_, flash.get("info"))
   })
 
   /**
@@ -331,6 +350,19 @@ trait RepositorySettingsControllerBase extends ControllerBase {
       FileUtils.deleteDirectory(getTemporaryDir(repository.owner, repository.name))
     }
     redirect(s"/${repository.owner}")
+  })
+
+  /**
+   * Run GC
+   */
+  post("/:owner/:repository/settings/gc")(ownerOnly { repository =>
+    LockUtil.lock(s"${repository.owner}/${repository.name}") {
+      using(Git.open(getRepositoryDir(repository.owner, repository.name))) { git =>
+        git.gc();
+      }
+    }
+    flash += "info" -> "Garbage collection has been executed."
+    redirect(s"/${repository.owner}/${repository.name}/settings/danger")
   })
 
   /**
