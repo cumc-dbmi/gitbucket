@@ -6,6 +6,7 @@ import gitbucket.core.servlet.Database
 import gitbucket.core.view.Markdown
 
 import scala.concurrent._
+import scala.collection.JavaConversions._
 import ExecutionContext.Implicits.global
 import org.apache.commons.mail.{DefaultAuthenticator, HtmlEmail}
 import org.slf4j.LoggerFactory
@@ -14,23 +15,25 @@ import gitbucket.core.controller.Context
 import SystemSettingsService.Smtp
 import ControlUtil.defining
 
+import scala.slick.collection.heterogenous.Zero.+
+
 trait Notifier extends RepositoryService with AccountService with IssuesService {
   def toNotify(r: RepositoryService.RepositoryInfo, issue: Issue, content: String)
-      (msg: String => String)(implicit context: Context): Unit
+              (msg: String => String)(implicit context: Context): Unit
 
   protected def recipients(issue: Issue)(notify: String => Unit)(implicit session: Session, context: Context) =
     (
-        // individual repository's owner
-        issue.userName ::
+      // individual repository's owner
+      issue.userName ::
         // collaborators
         getCollaborators(issue.userName, issue.repositoryName) :::
         // participants
         issue.openedUserName ::
         getComments(issue.userName, issue.repositoryName, issue.issueId).map(_.commentedUserName)
-    )
-    .distinct
-    .withFilter ( _ != context.loginAccount.get.userName )  // the operation in person is excluded
-    .foreach ( getAccountByUserName(_) filterNot (_.isGroupAccount) filterNot (LDAPUtil.isDummyMailAddress(_)) foreach (x => notify(x.mailAddress)) )
+      )
+      .distinct
+      .withFilter(_ != context.loginAccount.get.userName) // the operation in person is excluded
+      .foreach(getAccountByUserName(_) filterNot (_.isGroupAccount) filterNot (LDAPUtil.isDummyMailAddress(_)) foreach (x => notify(x.mailAddress)))
 
 }
 
@@ -41,26 +44,30 @@ object Notifier {
     case _ => new MockMailer
   }
 
-  def msgIssue(url: String) = (content: String) => s"""
-    |${content}<br/>
-    |--<br/>
-    |<a href="${url}">View it on GitBucket</a>
+  def msgIssue(url: String) = (content: String) =>
+    s"""
+       |${content}<br/>
+       |--<br/>
+       |<a href="${url}">View it on GitBucket</a>
     """.stripMargin
 
-  def msgPullRequest(url: String) = (content: String) => s"""
-    |${content}<hr/>
-    |View, comment on, or merge it at:<br/>
-    |<a href="${url}">${url}</a>
+  def msgPullRequest(url: String) = (content: String) =>
+    s"""
+       |${content}<hr/>
+       |View, comment on, or merge it at:<br/>
+       |<a href="${url}">${url}</a>
     """.stripMargin
 
-  def msgComment(url: String) = (content: String) => s"""
-    |${content}<br/>
-    |--<br/>
-    |<a href="${url}">View it on GitBucket</a>
+  def msgComment(url: String) = (content: String) =>
+    s"""
+       |${content}<br/>
+       |--<br/>
+       |<a href="${url}">View it on GitBucket</a>
     """.stripMargin
 
-  def msgStatus(url: String) = (content: String) => s"""
-    |${content} <a href="${url}">#${url split('/') last}</a>
+  def msgStatus(url: String) = (content: String) =>
+    s"""
+       |${content} <a href="${url}">#${url split ('/') last}</a>
     """.stripMargin
 }
 
@@ -68,7 +75,7 @@ class Mailer(private val smtp: Smtp) extends Notifier {
   private val logger = LoggerFactory.getLogger(classOf[Mailer])
 
   def toNotify(r: RepositoryService.RepositoryInfo, issue: Issue, content: String)
-      (msg: String => String)(implicit context: Context) = {
+              (msg: String => String)(implicit context: Context) = {
     val database = Database()
 
     val f = Future {
@@ -76,16 +83,16 @@ class Mailer(private val smtp: Smtp) extends Notifier {
         defining(
           s"[${r.name}] ${issue.title} (#${issue.issueId})" ->
             msg(Markdown.toHtml(
-              markdown         = content,
-              repository       = r,
-              enableWikiLink   = false,
-              enableRefsLink   = true,
-              enableAnchor     = false,
+              markdown = content,
+              repository = r,
+              enableWikiLink = false,
+              enableRefsLink = true,
+              enableAnchor = false,
               enableLineBreaks = false
             ))) { case (subject, msg) =>
-            recipients(issue) { to =>
-              send(to, subject, msg)
-            }
+          recipients(issue) { to =>
+            send(to, subject, msg)
+          }
         }
       }
       "Notifications Successful."
@@ -109,20 +116,32 @@ class Mailer(private val smtp: Smtp) extends Notifier {
       email.setSSLOnConnect(ssl)
     }
     smtp.fromAddress
-      .map (_ -> smtp.fromName.getOrElse(context.loginAccount.get.userName))
-      .orElse (Some("notifications@gitbucket.com" -> context.loginAccount.get.userName))
+      .map(_ -> smtp.fromName.getOrElse(context.loginAccount.get.userName))
+      .orElse(Some("notifications@gitbucket.com" -> context.loginAccount.get.userName))
       .foreach { case (address, name) =>
         email.setFrom(address, name)
       }
     email.setCharset("UTF-8")
-    email.setSubject(subject)
+    //email.setSubject(subject)
+
+    val useEncryption = System.getProperty("gitbucket.enableEncryption"); //true
+    email.setSubject(useEncryption?(decorateMsg(to, subject)):subject) //flag subject of emails e.g. for email router-based encryption
     email.setHtmlMsg(msg)
 
     email.addTo(to).send
   }
 
+  // If the domain of target email address is not on the white list, then append FLAG to subject
+  def decorateMsg(targetAddress: String, subject: String): String = {
+    val whitelist = System.getProperty("gitbucket.whitelist"); //("nyp.org","cumc.columbia.edu", "med.cornell.edu");
+    val list = whitelist.split(",").map(_.trim);
+    val flag = System.getProperty("gitbucket.encryption.flag");
+    (whitelist contains targetAddress)?subject:(subject + flag);
+  }
+
 }
+
 class MockMailer extends Notifier {
   def toNotify(r: RepositoryService.RepositoryInfo, issue: Issue, content: String)
-      (msg: String => String)(implicit context: Context): Unit = {}
+              (msg: String => String)(implicit context: Context): Unit = {}
 }
