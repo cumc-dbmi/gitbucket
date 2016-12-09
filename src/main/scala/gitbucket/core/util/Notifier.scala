@@ -122,21 +122,25 @@ class Mailer(private val smtp: Smtp) extends Notifier {
         email.setFrom(address, name)
       }
     email.setCharset("UTF-8")
-    //email.setSubject(subject)
+    email.setSubject(subject)
 
-    val useEncryption = System.getProperty("gitbucket.enableEncryption"); //true
-    email.setSubject(useEncryption?(decorateMsg(to, subject)):subject) //flag subject of emails e.g. for email router-based encryption
     email.setHtmlMsg(msg)
-
-    email.addTo(to).send
+    email.addTo(replaceEmailAddress(to)).send
   }
 
-  // If the domain of target email address is not on the white list, then append FLAG to subject
-  def decorateMsg(targetAddress: String, subject: String): String = {
-    val whitelist = System.getProperty("gitbucket.whitelist"); //("nyp.org","cumc.columbia.edu", "med.cornell.edu");
-    val list = whitelist.split(",").map(_.trim);
-    val flag = System.getProperty("gitbucket.encryption.flag");
-    (whitelist contains targetAddress)?subject:(subject + flag);
+  // change columbia.edu --> cumc.columbia.edu
+  def replaceEmailAddress(toAddress: String): String = {
+    val target = System.getProperty("gitbucket.notification.targetdomain"); //"columbia.edu";
+    val replacement = System.getProperty("gitbucket.notification.replacementdomain"); //"cumc.columbia.edu";
+    val parts = toAddress.split("@")
+    val username = parts(0)
+    val domain = parts(1)
+    logger.debug(target + "|" + replacement + "|" username + "|" domain );
+    if (domain.indexOf(target) == -1 ){
+      toAddress
+    } else {
+      username.concat(replacement)
+    }
   }
 
 }
