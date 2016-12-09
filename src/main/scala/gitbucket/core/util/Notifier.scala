@@ -122,10 +122,9 @@ class Mailer(private val smtp: Smtp) extends Notifier {
         email.setFrom(address, name)
       }
     email.setCharset("UTF-8")
-    //email.setSubject(subject)
 
-    val useEncryption = System.getProperty("gitbucket.enableEncryption"); //true
-    email.setSubject(useEncryption?(decorateMsg(to, subject)):subject) //flag subject of emails e.g. for email router-based encryption
+    val useEncryption = System.getProperty("gitbucket.notification.enableEncryption"); //true
+    if (useEncryption.toBoolean) email.setSubject(decorateMsg(to, subject)) else email.setSubject(subject)
     email.setHtmlMsg(msg)
 
     email.addTo(to).send
@@ -133,10 +132,12 @@ class Mailer(private val smtp: Smtp) extends Notifier {
 
   // If the domain of target email address is not on the white list, then append FLAG to subject
   def decorateMsg(targetAddress: String, subject: String): String = {
-    val whitelist = System.getProperty("gitbucket.whitelist"); //("nyp.org","cumc.columbia.edu", "med.cornell.edu");
-    val list = whitelist.split(",").map(_.trim);
-    val flag = System.getProperty("gitbucket.encryption.flag");
-    (whitelist contains targetAddress)?subject:(subject + flag);
+    val whitelist = System.getProperty("gitbucket.notification.whitelist"); //nyp.org,cumc.columbia.edu,med.cornell.edu;
+    val flag = System.getProperty("gitbucket.notification.encryptionFlag"); //encrypt#
+    val parsedWhiteList = whitelist.split(",").map(_.trim);
+    val targetDomain = targetAddress.substring(targetAddress.indexOf("@"));
+    val  newSubject = subject.concat(" " + flag);
+    if (parsedWhiteList contains targetDomain) subject else newSubject;
   }
 
 }
