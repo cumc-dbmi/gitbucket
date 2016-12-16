@@ -1,0 +1,17 @@
+package gitbucket.core.util
+
+import org.scalatest.FunSpec
+
+class LDAPUtilSpec extends FunSpec {
+  describe("LDAPUtil") {
+    it("should be able to bind") {
+      //
+    }
+
+    describe("when there are multiple email address") {
+      it("should be able access them") {
+        //
+      }
+    }
+  }
+}
