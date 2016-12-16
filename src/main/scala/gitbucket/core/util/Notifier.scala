@@ -138,7 +138,7 @@ class Mailer(private val smtp: Smtp) extends Notifier {
     subject.concat(" " + flag);
   }
 
-  def useEncryptionFlag(none: None): Boolean = {
+  def useEncryptionFlag(): Boolean = {
     val useEncryption = System.getProperty("gitbucket.notification.useEncryptionFlag"); //true
     useEncryption.toBoolean
   }

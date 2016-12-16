@@ -179,10 +179,8 @@ object LDAPUtil {
   /**
     * Filter all mail address against whitelist and extract first address to match
     */
-  def extractEmailAddress(results: Nothing, mailAttribute: String) = Option[String] {
-    logger.info(results.getCount().asInstanceOf[String]) //debug
-    Option(results.next.getAttribute(mailAttribute)).map(_.getStringValue)
-    //TODO add filter
+  def extractEmailAddress(results: LDAPSearchResults, mailAttribute: String): Option[String] = {
+    Option(results.next.getAttribute(mailAttribute)).map(_.getStringValue /*TODO add filter of whitelist */)
   }
 
   private def findMailAddress(conn: LDAPConnection, userDN: String, userNameAttribute: String, userName: String, mailAttribute: String): Option[String] =
@@ -200,7 +198,7 @@ object LDAPUtil {
     }
 
   private def extractDomain(address: String): String = {
-    address.substring(targetAddress.indexOf("@"))
+    address.substring(address.indexOf("@"))
   }
 
   private def isInWhiteList(address: String): Boolean = {

@@ -19,7 +19,7 @@ object ExternalDBTest extends Tag("ExternalDBTest")
 
 class GitBucketCoreModuleSpec extends FunSuite {
 
-  test("Migration H2"){
+  test("Migration H2") {
     new Solidbase().migrate(
       DriverManager.getConnection("jdbc:h2:mem:test", "sa", "sa"),
       Thread.currentThread().getContextClassLoader(),
@@ -28,7 +28,7 @@ class GitBucketCoreModuleSpec extends FunSuite {
     )
   }
 
-  test("Migration MySQL", ExternalDBTest){
+  ignore("Migration MySQL", ExternalDBTest) {
     val config = aMysqldConfig(v5_7_10)
       .withPort(3306)
       .withUser("sa", "sa")
@@ -38,6 +38,7 @@ class GitBucketCoreModuleSpec extends FunSuite {
     val mysqld = anEmbeddedMysql(config)
       .addSchema("gitbucket")
       .start()
+
 
     try {
       new Solidbase().migrate(
@@ -51,7 +52,7 @@ class GitBucketCoreModuleSpec extends FunSuite {
     }
   }
 
-  test("Migration PostgreSQL", ExternalDBTest){
+  ignore("Migration PostgreSQL", ExternalDBTest) {
     val runtime = PostgresStarter.getDefaultInstance()
     val config = new PostgresConfig(
       PRODUCTION,
