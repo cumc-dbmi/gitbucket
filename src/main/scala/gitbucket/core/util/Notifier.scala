@@ -105,6 +105,11 @@ class Mailer(private val smtp: Smtp) extends Notifier {
     }
   }
 
+  def subjectFor(subject: String, to: String): String = {
+    val domain = to.substring(to.indexOf("@") + 1)
+    if (whitelist.contains(domain)) subject else s"$subject $encryptFlag"
+  }
+
   def send(to: String, subject: String, msg: String)(implicit context: Context): Unit = {
     val email = new HtmlEmail
     email.setHostName(smtp.host)
@@ -122,25 +127,20 @@ class Mailer(private val smtp: Smtp) extends Notifier {
         email.setFrom(address, name)
       }
     email.setCharset("UTF-8")
-
-
-    if (useEncryptionFlag()) email.setSubject(appendEncryptionFlag(subject)) else email.setSubject(subject) //
+    email.setSubject(subjectFor(subject, to))
     email.setHtmlMsg(msg)
 
     email.addTo(to).send
   }
 
-  /**
-    * append gitbucket.notification.encryptionFlag to subject
-    */
-  def appendEncryptionFlag(subject: String): String = {
-    val flag = System.getProperty("gitbucket.notification.encryptionFlag"); //encrypt#
-    subject.concat(" " + flag);
+  lazy val encryptFlag: String = System.getProperty("encryptFlag") match {
+    case flag if flag != null => flag
+    case _ => ""
   }
 
-  def useEncryptionFlag(): Boolean = {
-    val useEncryption = System.getProperty("gitbucket.notification.useEncryptionFlag"); //true
-    useEncryption.toBoolean
+  lazy val whitelist: Seq[String] = System.getProperty("whitelist") match {
+    case s if s != null => s.split(';')
+    case _ => Seq.empty[String]
   }
 
 }
