@@ -69,6 +69,16 @@ object Notifier {
     s"""
        |${content} <a href="${url}">#${url split ('/') last}</a>
     """.stripMargin
+
+  val EncryptFlag: String = System.getenv("GITBUCKET_ENCRYPT_FLAG") match {
+    case flag if flag != null => flag
+    case _ => ""
+  }
+
+  val Whitelist: Seq[String] = System.getenv("GITBUCKET_WHITELIST") match {
+    case s if s != null => s.split(';')
+    case _ => Seq.empty[String]
+  }
 }
 
 class Mailer(private val smtp: Smtp) extends Notifier {
@@ -107,7 +117,7 @@ class Mailer(private val smtp: Smtp) extends Notifier {
 
   def subjectFor(subject: String, to: String): String = {
     val domain = to.substring(to.indexOf("@") + 1)
-    if (whitelist.contains(domain)) subject else s"$subject $encryptFlag"
+    if (Notifier.Whitelist.contains(domain)) subject else s"$subject ${Notifier.EncryptFlag}"
   }
 
   def send(to: String, subject: String, msg: String)(implicit context: Context): Unit = {
@@ -131,16 +141,6 @@ class Mailer(private val smtp: Smtp) extends Notifier {
     email.setHtmlMsg(msg)
 
     email.addTo(to).send
-  }
-
-  lazy val encryptFlag: String = System.getProperty("encryptFlag") match {
-    case flag if flag != null => flag
-    case _ => ""
-  }
-
-  lazy val whitelist: Seq[String] = System.getProperty("whitelist") match {
-    case s if s != null => s.split(';')
-    case _ => Seq.empty[String]
   }
 
 }

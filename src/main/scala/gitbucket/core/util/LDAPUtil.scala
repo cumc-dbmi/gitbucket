@@ -16,8 +16,6 @@ object LDAPUtil {
 
   private val LDAP_VERSION: Int = LDAPConnection.LDAP_V3
   private val logger = LoggerFactory.getLogger(getClass().getName())
-  private val whitelist = System.getProperty("gitbucket.notification.whitelist").split(",").map(_.trim);
-  //nyp.org,cumc.columbia.edu,med.cornell.edu;
 
   private val LDAP_DUMMY_MAL = "@ldap-devnull"
 
@@ -176,17 +174,14 @@ object LDAPUtil {
     }
   }
 
-  /**
-    * Filter all mail address against whitelist and extract first address to match
-    */
-  def extractEmailAddress(results: LDAPSearchResults, mailAttribute: String): Option[String] = {
-    Option(results.next.getAttribute(mailAttribute)).map(_.getStringValue /*TODO add filter of whitelist */)
-  }
-
   private def findMailAddress(conn: LDAPConnection, userDN: String, userNameAttribute: String, userName: String, mailAttribute: String): Option[String] =
     defining(conn.search(userDN, LDAPConnection.SCOPE_BASE, userNameAttribute + "=" + userName, Array[String](mailAttribute), false)) { results =>
       if (results.hasMore) {
-        extractEmailAddress(results, mailAttribute)
+        val ldapEntry = results.next()
+        Option(ldapEntry.getAttribute(mailAttribute)).map { mailAttr =>
+          val addresses = mailAttr.getStringValueArray
+          addresses.find(isInWhiteList).orElse(addresses.headOption).get
+        }
       } else None
     }
 
@@ -202,7 +197,8 @@ object LDAPUtil {
   }
 
   private def isInWhiteList(address: String): Boolean = {
-    whitelist.contains(address)
+    val domain = address.substring(address.indexOf('@') + 1)
+    Notifier.Whitelist.contains(domain)
   }
 
   case class LDAPUserInfo(userName: String, fullName: String, mailAddress: String)
