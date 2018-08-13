@@ -16,8 +16,11 @@ project/plugins/project/
 .classpath
 .project
 .cache
+.cache-main
+.cache-tests
 .settings
 
 # IntelliJ specific
 .idea/
 .idea_modules/
+*.iml

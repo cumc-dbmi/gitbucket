@@ -5,7 +5,7 @@ import gitbucket.core.controller.Context
 import gitbucket.core.model.Account
 import gitbucket.core.service.RepositoryService.RepositoryInfo
 import gitbucket.core.util._
-import gitbucket.core.util.ControlUtil._
+import gitbucket.core.util.SyntaxSugars._
 import org.eclipse.jgit.api.Git
 import org.eclipse.jgit.treewalk.CanonicalTreeParser
 import org.eclipse.jgit.lib._
@@ -17,10 +17,10 @@ import org.eclipse.jgit.api.errors.PatchFormatException
 import scala.collection.JavaConverters._
 
 object WikiService {
-  
+
   /**
    * The model for wiki page.
-   * 
+   *
    * @param name the page name
    * @param content the page content
    * @param committer the last committer
@@ -28,10 +28,10 @@ object WikiService {
    * @param id the latest commit id
    */
   case class WikiPageInfo(name: String, content: String, committer: String, time: Date, id: String)
-  
+
   /**
    * The model for wiki page history.
-   * 
+   *
    * @param name the page name
    * @param committer the committer the committer
    * @param message the commit message
@@ -39,12 +39,11 @@ object WikiService {
    */
   case class WikiPageHistoryInfo(name: String, committer: String, message: String, date: Date)
 
+  def wikiHttpUrl(repositoryInfo: RepositoryInfo)(implicit context: Context): String =
+    RepositoryService.httpUrl(repositoryInfo.owner, repositoryInfo.name + ".wiki")
 
-  def wikiHttpUrl(repositoryInfo: RepositoryInfo)(implicit context: Context): String
-    = RepositoryService.httpUrl(repositoryInfo.owner, repositoryInfo.name + ".wiki")
-
-  def wikiSshUrl(repositoryInfo: RepositoryInfo)(implicit context: Context): Option[String]
-    = RepositoryService.sshUrl(repositoryInfo.owner, repositoryInfo.name + ".wiki")
+  def wikiSshUrl(repositoryInfo: RepositoryInfo)(implicit context: Context): Option[String] =
+    RepositoryService.sshUrl(repositoryInfo.owner, repositoryInfo.name + ".wiki")
 
 }
 
@@ -52,11 +51,20 @@ trait WikiService {
   import WikiService._
 
   def createWikiRepository(loginAccount: Account, owner: String, repository: String): Unit =
-    LockUtil.lock(s"${owner}/${repository}/wiki"){
-      defining(Directory.getWikiRepositoryDir(owner, repository)){ dir =>
-        if(!dir.exists){
+    LockUtil.lock(s"${owner}/${repository}/wiki") {
+      defining(Directory.getWikiRepositoryDir(owner, repository)) { dir =>
+        if (!dir.exists) {
           JGitUtil.initRepository(dir)
-          saveWikiPage(owner, repository, "Home", "Home", s"Welcome to the ${repository} wiki!!", loginAccount, "Initial Commit", None)
+          saveWikiPage(
+            owner,
+            repository,
+            "Home",
+            "Home",
+            s"Welcome to the ${repository} wiki!!",
+            loginAccount,
+            "Initial Commit",
+            None
+          )
         }
       }
     }
@@ -65,39 +73,30 @@ trait WikiService {
    * Returns the wiki page.
    */
   def getWikiPage(owner: String, repository: String, pageName: String): Option[WikiPageInfo] = {
-    using(Git.open(Directory.getWikiRepositoryDir(owner, repository))){ git =>
-      if(!JGitUtil.isEmpty(git)){
+    using(Git.open(Directory.getWikiRepositoryDir(owner, repository))) { git =>
+      if (!JGitUtil.isEmpty(git)) {
         JGitUtil.getFileList(git, "master", ".").find(_.name == pageName + ".md").map { file =>
-          WikiPageInfo(file.name, StringUtil.convertFromByteArray(git.getRepository.open(file.id).getBytes),
-                       file.author, file.time, file.commitId)
+          WikiPageInfo(
+            file.name,
+            StringUtil.convertFromByteArray(git.getRepository.open(file.id).getBytes),
+            file.author,
+            file.time,
+            file.commitId
+          )
         }
       } else None
     }
   }
 
   /**
-   * Returns the content of the specified file.
-   */
-  def getFileContent(owner: String, repository: String, path: String): Option[Array[Byte]] =
-    using(Git.open(Directory.getWikiRepositoryDir(owner, repository))){ git =>
-      if(!JGitUtil.isEmpty(git)){
-        val index = path.lastIndexOf('/')
-        val parentPath = if(index < 0) "."  else path.substring(0, index)
-        val fileName   = if(index < 0) path else path.substring(index + 1)
-
-        JGitUtil.getFileList(git, "master", parentPath).find(_.name == fileName).map { file =>
-          git.getRepository.open(file.id).getBytes
-        }
-      } else None
-    }
-
-  /**
    * Returns the list of wiki page names.
    */
   def getWikiPageList(owner: String, repository: String): List[String] = {
-    using(Git.open(Directory.getWikiRepositoryDir(owner, repository))){ git =>
-      JGitUtil.getFileList(git, "master", ".")
-        .filter(_.name.endsWith(".md")).filterNot(_.name.startsWith("_"))
+    using(Git.open(Directory.getWikiRepositoryDir(owner, repository))) { git =>
+      JGitUtil
+        .getFileList(git, "master", ".")
+        .filter(_.name.endsWith(".md"))
+        .filterNot(_.name.startsWith("_"))
         .map(_.name.stripSuffix(".md"))
         .sortBy(x => x)
     }
@@ -106,15 +105,20 @@ trait WikiService {
   /**
    * Reverts specified changes.
    */
-  def revertWikiPage(owner: String, repository: String, from: String, to: String,
-                     committer: Account, pageName: Option[String]): Boolean = {
+  def revertWikiPage(
+    owner: String,
+    repository: String,
+    from: String,
+    to: String,
+    committer: Account,
+    pageName: Option[String]
+  ): Boolean = {
 
     case class RevertInfo(operation: String, filePath: String, source: String)
 
     try {
-      LockUtil.lock(s"${owner}/${repository}/wiki"){
-        using(Git.open(Directory.getWikiRepositoryDir(owner, repository))){ git =>
-
+      LockUtil.lock(s"${owner}/${repository}/wiki") {
+        using(Git.open(Directory.getWikiRepositoryDir(owner, repository))) { git =>
           val reader = git.getRepository.newObjectReader
           val oldTreeIter = new CanonicalTreeParser
           oldTreeIter.reset(reader, git.getRepository.resolve(from + "^{tree}"))
@@ -129,7 +133,7 @@ trait WikiService {
             }
           }
 
-          val patch = using(new java.io.ByteArrayOutputStream()){ out =>
+          val patch = using(new java.io.ByteArrayOutputStream()) { out =>
             val formatter = new DiffFormatter(out)
             formatter.setRepository(git.getRepository)
             formatter.format(diffs.asJava)
@@ -138,21 +142,22 @@ trait WikiService {
 
           val p = new Patch()
           p.parse(new ByteArrayInputStream(patch.getBytes("UTF-8")))
-          if(!p.getErrors.isEmpty){
+          if (!p.getErrors.isEmpty) {
             throw new PatchFormatException(p.getErrors())
           }
           val revertInfo = (p.getFiles.asScala.map { fh =>
             fh.getChangeType match {
               case DiffEntry.ChangeType.MODIFY => {
-                val source = getWikiPage(owner, repository, fh.getNewPath.stripSuffix(".md")).map(_.content).getOrElse("")
+                val source =
+                  getWikiPage(owner, repository, fh.getNewPath.stripSuffix(".md")).map(_.content).getOrElse("")
                 val applied = PatchUtil.apply(source, patch, fh)
-                if(applied != null){
+                if (applied != null) {
                   Seq(RevertInfo("ADD", fh.getNewPath, applied))
                 } else Nil
               }
               case DiffEntry.ChangeType.ADD => {
                 val applied = PatchUtil.apply("", patch, fh)
-                if(applied != null){
+                if (applied != null) {
                   Seq(RevertInfo("ADD", fh.getNewPath, applied))
                 } else Nil
               }
@@ -161,7 +166,7 @@ trait WikiService {
               }
               case DiffEntry.ChangeType.RENAME => {
                 val applied = PatchUtil.apply("", patch, fh)
-                if(applied != null){
+                if (applied != null) {
                   Seq(RevertInfo("DELETE", fh.getOldPath, ""), RevertInfo("ADD", fh.getNewPath, applied))
                 } else {
                   Seq(RevertInfo("DELETE", fh.getOldPath, ""))
@@ -171,28 +176,41 @@ trait WikiService {
             }
           }).flatten
 
-          if(revertInfo.nonEmpty){
-            val builder  = DirCache.newInCore.builder()
+          if (revertInfo.nonEmpty) {
+            val builder = DirCache.newInCore.builder()
             val inserter = git.getRepository.newObjectInserter()
-            val headId   = git.getRepository.resolve(Constants.HEAD + "^{commit}")
+            val headId = git.getRepository.resolve(Constants.HEAD + "^{commit}")
 
-            JGitUtil.processTree(git, headId){ (path, tree) =>
-              if(revertInfo.find(x => x.filePath == path).isEmpty){
+            JGitUtil.processTree(git, headId) { (path, tree) =>
+              if (!revertInfo.exists(x => x.filePath == path)) {
                 builder.add(JGitUtil.createDirCacheEntry(path, tree.getEntryFileMode, tree.getEntryObjectId))
               }
             }
 
             revertInfo.filter(_.operation == "ADD").foreach { x =>
-              builder.add(JGitUtil.createDirCacheEntry(x.filePath, FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, x.source.getBytes("UTF-8"))))
+              builder.add(
+                JGitUtil.createDirCacheEntry(
+                  x.filePath,
+                  FileMode.REGULAR_FILE,
+                  inserter.insert(Constants.OBJ_BLOB, x.source.getBytes("UTF-8"))
+                )
+              )
             }
             builder.finish()
 
-            JGitUtil.createNewCommit(git, inserter, headId, builder.getDirCache.writeTree(inserter),
-              Constants.HEAD, committer.fullName, committer.mailAddress,
+            JGitUtil.createNewCommit(
+              git,
+              inserter,
+              headId,
+              builder.getDirCache.writeTree(inserter),
+              Constants.HEAD,
+              committer.fullName,
+              committer.mailAddress,
               pageName match {
                 case Some(x) => s"Revert ${from} ... ${to} on ${x}"
                 case None    => s"Revert ${from} ... ${to}"
-              })
+              }
+            )
           }
         }
       }
@@ -208,46 +226,70 @@ trait WikiService {
   /**
    * Save the wiki page and return the commit id.
    */
-  def saveWikiPage(owner: String, repository: String, currentPageName: String, newPageName: String,
-      content: String, committer: Account, message: String, currentId: Option[String]): Option[String] = {
-    LockUtil.lock(s"${owner}/${repository}/wiki"){
-      using(Git.open(Directory.getWikiRepositoryDir(owner, repository))){ git =>
-        val builder  = DirCache.newInCore.builder()
+  def saveWikiPage(
+    owner: String,
+    repository: String,
+    currentPageName: String,
+    newPageName: String,
+    content: String,
+    committer: Account,
+    message: String,
+    currentId: Option[String]
+  ): Option[String] = {
+    LockUtil.lock(s"${owner}/${repository}/wiki") {
+      using(Git.open(Directory.getWikiRepositoryDir(owner, repository))) { git =>
+        val builder = DirCache.newInCore.builder()
         val inserter = git.getRepository.newObjectInserter()
-        val headId   = git.getRepository.resolve(Constants.HEAD + "^{commit}")
-        var created  = true
-        var updated  = false
-        var removed  = false
+        val headId = git.getRepository.resolve(Constants.HEAD + "^{commit}")
+        var created = true
+        var updated = false
+        var removed = false
 
-        if(headId != null){
-          JGitUtil.processTree(git, headId){ (path, tree) =>
-            if(path == currentPageName + ".md" && currentPageName != newPageName){
+        if (headId != null) {
+          JGitUtil.processTree(git, headId) { (path, tree) =>
+            if (path == currentPageName + ".md" && currentPageName != newPageName) {
               removed = true
-            } else if(path != newPageName + ".md"){
+            } else if (path != newPageName + ".md") {
               builder.add(JGitUtil.createDirCacheEntry(path, tree.getEntryFileMode, tree.getEntryObjectId))
             } else {
               created = false
-              updated = JGitUtil.getContentFromId(git, tree.getEntryObjectId, true).map(new String(_, "UTF-8") != content).getOrElse(false)
+              updated = JGitUtil
+                .getContentFromId(git, tree.getEntryObjectId, true)
+                .map(new String(_, "UTF-8") != content)
+                .getOrElse(false)
             }
           }
         }
 
-        if(created || updated || removed){
-          builder.add(JGitUtil.createDirCacheEntry(newPageName + ".md", FileMode.REGULAR_FILE, inserter.insert(Constants.OBJ_BLOB, content.getBytes("UTF-8"))))
+        if (created || updated || removed) {
+          builder.add(
+            JGitUtil.createDirCacheEntry(
+              newPageName + ".md",
+              FileMode.REGULAR_FILE,
+              inserter.insert(Constants.OBJ_BLOB, content.getBytes("UTF-8"))
+            )
+          )
           builder.finish()
-          val newHeadId = JGitUtil.createNewCommit(git, inserter, headId, builder.getDirCache.writeTree(inserter),
-            Constants.HEAD, committer.fullName, committer.mailAddress,
-            if(message.trim.length == 0) {
-              if(removed){
+          val newHeadId = JGitUtil.createNewCommit(
+            git,
+            inserter,
+            headId,
+            builder.getDirCache.writeTree(inserter),
+            Constants.HEAD,
+            committer.fullName,
+            committer.mailAddress,
+            if (message.trim.isEmpty) {
+              if (removed) {
                 s"Rename ${currentPageName} to ${newPageName}"
-              } else if(created){
+              } else if (created) {
                 s"Created ${newPageName}"
               } else {
                 s"Updated ${newPageName}"
               }
             } else {
               message
-            })
+            }
+          )
 
           Some(newHeadId.getName)
         } else None
@@ -258,26 +300,40 @@ trait WikiService {
   /**
    * Delete the wiki page.
    */
-  def deleteWikiPage(owner: String, repository: String, pageName: String,
-                     committer: String, mailAddress: String, message: String): Unit = {
-    LockUtil.lock(s"${owner}/${repository}/wiki"){
-      using(Git.open(Directory.getWikiRepositoryDir(owner, repository))){ git =>
-        val builder  = DirCache.newInCore.builder()
+  def deleteWikiPage(
+    owner: String,
+    repository: String,
+    pageName: String,
+    committer: String,
+    mailAddress: String,
+    message: String
+  ): Unit = {
+    LockUtil.lock(s"${owner}/${repository}/wiki") {
+      using(Git.open(Directory.getWikiRepositoryDir(owner, repository))) { git =>
+        val builder = DirCache.newInCore.builder()
         val inserter = git.getRepository.newObjectInserter()
-        val headId   = git.getRepository.resolve(Constants.HEAD + "^{commit}")
-        var removed  = false
+        val headId = git.getRepository.resolve(Constants.HEAD + "^{commit}")
+        var removed = false
 
-        JGitUtil.processTree(git, headId){ (path, tree) =>
-          if(path != pageName + ".md"){
+        JGitUtil.processTree(git, headId) { (path, tree) =>
+          if (path != pageName + ".md") {
             builder.add(JGitUtil.createDirCacheEntry(path, tree.getEntryFileMode, tree.getEntryObjectId))
           } else {
             removed = true
           }
         }
-        if(removed){
+        if (removed) {
           builder.finish()
-          JGitUtil.createNewCommit(git, inserter, headId, builder.getDirCache.writeTree(inserter),
-            Constants.HEAD, committer, mailAddress, message)
+          JGitUtil.createNewCommit(
+            git,
+            inserter,
+            headId,
+            builder.getDirCache.writeTree(inserter),
+            Constants.HEAD,
+            committer,
+            mailAddress,
+            message
+          )
         }
       }
     }

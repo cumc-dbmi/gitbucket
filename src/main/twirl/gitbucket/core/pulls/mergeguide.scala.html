@@ -5,12 +5,12 @@
   forkedRepository: gitbucket.core.service.RepositoryService.RepositoryInfo)(implicit context: gitbucket.core.controller.Context)
 @import gitbucket.core.view.helpers
 <div class="issue-comment-box" style="background-color: @if(status.hasProblem){ #fbeed5 }else{ #d8f5cd };">
-  <div class="box-content issue-content" style="border: 1px solid @if(status.hasProblem){ #c09853 }else{ #95c97e };padding:0">
+  <div class="box-content" style="border: 1px solid @if(status.hasProblem){ #c09853 }else{ #95c97e };padding:0">
     <div id="merge-pull-request">
       @if(!status.statuses.isEmpty){
         <div class="build-statuses">
           @defining(status.commitStateSummary){ case (summaryState, summary) =>
-            <a class="pull-right" id="toggle-all-checks"></a>
+            <a class="pull-right" id="toggle-all-checks" href="javascript:void(0);"></a>
             <span class="build-status-icon text-@{summaryState.name}">@helpers.commitStateIcon(summaryState)</span>
             <strong class="text-@{summaryState.name}">@helpers.commitStateText(summaryState, pullreq.commitIdTo)</strong>
             <span class="text-@{summaryState.name}">— @summary checks</span>
@@ -20,7 +20,7 @@
           @status.statusesAndRequired.map { case (status, required) =>
             <div class="build-status-item">
               <div class="pull-right">
-                @if(required){ <span class="label">Required</span> }
+                @if(required){ <span class="label label-success">Required</span> }
                 @status.targetUrl.map { url => <a href="@url">Details</a> }
               </div>
               <span class="build-status-icon text-@{status.state.name}">@helpers.commitStateIcon(status.state)</span>
@@ -40,6 +40,10 @@
             } else {
               Only those with write access to this repository can merge pull requests.
             }
+          </div>
+          <div>
+            <hr>
+            @status.conflictMessage.map { message => @helpers.markdown(message, originRepository, false, true, false) }
           </div>
         } else {
           @if(status.branchIsOutOfDate){
@@ -99,10 +103,10 @@
                 you can perform a manual merge on the command line.
               </p>
             }
-            @gitbucket.core.helper.html.copy("repository-url-copy", forkedRepository.httpUrl){
+            @gitbucket.core.helper.html.copy("repository-url", "repository-url-copy", forkedRepository.httpUrl){
               <div class="input-group-btn" data-toggle="buttons">
                 <label class="btn btn-sm btn-default active" id="repository-url-http"><input type="radio" checked>HTTP</label>
-                @if(context.settings.ssh && context.loginAccount.isDefined){
+                @if(context.settings.ssh.enabled && context.loginAccount.isDefined){
                   <label class="btn btn-sm btn-default" id="repository-url-ssh"><input type="radio">SSH</label>
                 }
               </div>
@@ -112,20 +116,19 @@
               <p>
                 <span class="strong">Step 1:</span> From your project repository, check out a new branch and test the changes.
               </p>
-              @defining(s"git checkout -b ${pullreq.requestUserName}-${pullreq.requestBranch} ${pullreq.branch}\n" +
-                        s"git pull ${forkedRepository.httpUrl} ${pullreq.requestBranch}"){ command =>
-                @gitbucket.core.helper.html.copy("merge-command-copy-1", command, "position: absolute; right: 31px;")()
-                <pre style="font-size: 12px; border-radius: 3px;" id="merge-command">@Html(command)</pre>
+              @helpers.pre {
+                git checkout -b @{pullreq.requestUserName}-@{pullreq.requestBranch} @{pullreq.branch}
+                git pull @{forkedRepository.httpUrl} @{pullreq.requestBranch}
               }
             </div>
             <div>
               <p>
                 <span class="strong">Step 2:</span> Merge the changes and update on the server.
               </p>
-              @defining(s"git checkout ${pullreq.branch}\ngit merge --no-ff ${pullreq.requestUserName}-${pullreq.requestBranch}\n" +
-                        s"git push origin ${pullreq.branch}"){ command =>
-                @gitbucket.core.helper.html.copy("merge-command-copy-2", command, "position: absolute; right: 31px;")()
-                <pre style="font-size: 12px; border-radius: 3px;">@command</pre>
+              @helpers.pre {
+                git checkout @{pullreq.branch}
+                git merge --no-ff @{pullreq.requestUserName}-@{pullreq.requestBranch}
+                git push origin @{pullreq.branch}
               }
             </div>
           </div>
@@ -140,8 +143,48 @@
         <span id="error-message" class="error"></span>
         <textarea name="message" style="height: 80px; margin-top: 8px; margin-bottom: 8px;" class="form-control">@issue.title</textarea>
         <div>
-          <input type="button" class="btn btn-default" value="Cancel" id="cancel-merge-pull-request"/>
-          <input type="submit" class="btn btn-success" value="Confirm merge"/>
+          <div class="btn-group">
+            <button id="merge-strategy-btn" class="dropdown-toggle btn btn-default" data-toggle="dropdown">
+              <span class="strong">
+                @(Map(
+                  "merge-commit" -> "Merge commit",
+                  "squash"       -> "Squash",
+                  "rebase"       -> "Rebase"
+                )(originRepository.repository.options.defaultMergeOption))
+              </span>
+              <span class="caret"></span>
+            </button>
+            <ul class="dropdown-menu">
+              @defining(originRepository.repository.options.mergeOptions.split(",")){ mergeOptions =>
+                @if(mergeOptions.contains("merge-commit")){
+                  <li>
+                    <a href="javascript:void(0);" class="merge-strategy" data-value="merge-commit">
+                      <strong>Merge commit</strong><br>These commits will be added to the base branch via a merge commit.
+                    </a>
+                  </li>
+                }
+                @if(mergeOptions.contains("squash")){
+                  <li>
+                    <a href="javascript:void(0);" class="merge-strategy" data-value="squash">
+                      <strong>Squash</strong><br>These commits will be combined into one commit in the base branch.
+                    </a>
+                  </li>
+                }
+                @if(mergeOptions.contains("rebase")){
+                  <li>
+                    <a href="javascript:void(0);" class="merge-strategy" data-value="rebase">
+                      <strong>Rebase</strong><br>These commits will be rebased and added to the base branch.
+                    </a>
+                  </li>
+                }
+              }
+            </ul>
+          </div>
+          <div class="pull-right">
+            <input type="button" class="btn btn-default" value="Cancel" id="cancel-merge-pull-request"/>
+            <input type="submit" class="btn btn-success" value="Confirm merge"/>
+            <input type="hidden" name="strategy" value="@originRepository.repository.options.defaultMergeOption"/>
+          </div>
         </div>
       </form>
     </div>
@@ -195,5 +238,10 @@ $(function(){
       $('#merge-command-copy-1').attr('data-clipboard-text', $('#merge-command').text());
     });
   }
+
+  $('.merge-strategy').click(function(){
+    $('button#merge-strategy-btn > span.strong').text($(this).find('strong').text());
+    $('input[name=strategy]').val($(this).data('value'));
+  });
 });
 </script>

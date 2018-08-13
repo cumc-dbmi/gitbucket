@@ -8,7 +8,7 @@ class NotifierUtilSpec extends FunSpec  {
   val testSubject = "test"
   val encryptFlag = "#encrypt"
   val whitelist = "ok.com;good.com"
-  val mailer = new Mailer(Smtp("smtp.host.com", None, None, None, None, None, None))
+  val mailer = new Mailer(null)
 
   System.setProperty("encryptFlag", encryptFlag)
   System.setProperty("whitelist", whitelist)

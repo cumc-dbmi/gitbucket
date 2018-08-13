@@ -3,37 +3,40 @@ package gitbucket.core.util
 import java.io._
 import java.sql._
 import java.text.SimpleDateFormat
-import ControlUtil._
+import SyntaxSugars._
 import scala.annotation.tailrec
 import scala.collection.mutable.ListBuffer
 
 /**
  * Provides implicit class which extends java.sql.Connection.
- * This is used in automatic migration in [[servlet.AutoUpdateListener]].
+ * This is used in following points:
+ *
+ * - Automatic migration in [[gitbucket.core.servlet.InitializeListener]]
+ * - Data importing / exporting in [[gitbucket.core.controller.SystemSettingsController]] and [[gitbucket.core.controller.FileUploadController]]
  */
 object JDBCUtil {
 
-  implicit class RichConnection(conn: Connection){
+  implicit class RichConnection(private val conn: Connection) extends AnyVal {
 
     def update(sql: String, params: Any*): Int = {
-      execute(sql, params: _*){ stmt =>
+      execute(sql, params: _*) { stmt =>
         stmt.executeUpdate()
       }
     }
 
     def find[T](sql: String, params: Any*)(f: ResultSet => T): Option[T] = {
-      execute(sql, params: _*){ stmt =>
-        using(stmt.executeQuery()){ rs =>
-          if(rs.next) Some(f(rs)) else None
+      execute(sql, params: _*) { stmt =>
+        using(stmt.executeQuery()) { rs =>
+          if (rs.next) Some(f(rs)) else None
         }
       }
     }
 
     def select[T](sql: String, params: Any*)(f: ResultSet => T): Seq[T] = {
-      execute(sql, params: _*){ stmt =>
-        using(stmt.executeQuery()){ rs =>
+      execute(sql, params: _*) { stmt =>
+        using(stmt.executeQuery()) { rs =>
           val list = new ListBuffer[T]
-          while(rs.next){
+          while (rs.next) {
             list += f(rs)
           }
           list.toSeq
@@ -42,20 +45,21 @@ object JDBCUtil {
     }
 
     def selectInt(sql: String, params: Any*): Int = {
-      execute(sql, params: _*){ stmt =>
-        using(stmt.executeQuery()){ rs =>
-          if(rs.next) rs.getInt(1) else 0
+      execute(sql, params: _*) { stmt =>
+        using(stmt.executeQuery()) { rs =>
+          if (rs.next) rs.getInt(1) else 0
         }
       }
     }
 
     private def execute[T](sql: String, params: Any*)(f: (PreparedStatement) => T): T = {
-      using(conn.prepareStatement(sql)){ stmt =>
-        params.zipWithIndex.foreach { case (p, i) =>
-          p match {
-            case x: Int    => stmt.setInt(i + 1, x)
-            case x: String => stmt.setString(i + 1, x)
-          }
+      using(conn.prepareStatement(sql)) { stmt =>
+        params.zipWithIndex.foreach {
+          case (p, i) =>
+            p match {
+              case x: Int    => stmt.setInt(i + 1, x)
+              case x: String => stmt.setString(i + 1, x)
+            }
         }
         f(stmt)
       }
@@ -64,29 +68,33 @@ object JDBCUtil {
     def importAsSQL(in: InputStream): Unit = {
       conn.setAutoCommit(false)
       try {
-        using(in){ in =>
+        using(in) { in =>
           var out = new ByteArrayOutputStream()
 
           var length = 0
           val bytes = new scala.Array[Byte](1024 * 8)
           var stringLiteral = false
 
-          var count = 0
-
-          while({ length = in.read(bytes); length != -1 }){
-            for(i <- 0 to length - 1){
+          while ({ length = in.read(bytes); length != -1 }) {
+            for (i <- 0 until length) {
               val c = bytes(i)
-              if(c == '\''){
+              if (c == '\'') {
                 stringLiteral = !stringLiteral
               }
-              if(c == ';' && !stringLiteral){
+              if (c == ';' && !stringLiteral) {
                 val sql = new String(out.toByteArray, "UTF-8")
-                conn.update(sql)
+                conn.update(sql.trim)
                 out = new ByteArrayOutputStream()
               } else {
                 out.write(c)
               }
             }
+          }
+
+          val remain = out.toByteArray
+          if (remain.length != 0) {
+            val sql = new String(remain, "UTF-8")
+            conn.update(sql.trim)
           }
         }
         conn.commit()
@@ -126,26 +134,26 @@ object JDBCUtil {
               sb.append(columns.map(_._1).mkString(", "))
               sb.append(") VALUES (")
 
-              val values = columns.map { case (columnName, columnType) =>
-                if(rs.getObject(columnName) == null){
-                  null
-                } else {
-                  columnType match {
-                    case Types.BOOLEAN | Types.BIT => rs.getBoolean(columnName)
-                    case Types.VARCHAR | Types.CLOB | Types.CHAR | Types.LONGVARCHAR => rs.getString(columnName)
-                    case Types.INTEGER   => rs.getInt(columnName)
-                    case Types.TIMESTAMP => rs.getTimestamp(columnName)
+              val values = columns.map {
+                case (columnName, columnType) =>
+                  if (rs.getObject(columnName) == null) {
+                    null
+                  } else {
+                    columnType match {
+                      case Types.BOOLEAN | Types.BIT                                   => rs.getBoolean(columnName)
+                      case Types.VARCHAR | Types.CLOB | Types.CHAR | Types.LONGVARCHAR => rs.getString(columnName)
+                      case Types.INTEGER                                               => rs.getInt(columnName)
+                      case Types.BIGINT                                                => rs.getLong(columnName)
+                      case Types.TIMESTAMP                                             => rs.getTimestamp(columnName)
+                    }
                   }
-                }
               }
 
-              val columnValues = values.map { value =>
-                value match {
-                  case x: String    => "'" + x.replace("'", "''") + "'"
-                  case x: Timestamp => "'" + dateFormat.format(x) + "'"
-                  case null         => "NULL"
-                  case x            => x
-                }
+              val columnValues = values.map {
+                case x: String    => "'" + x.replace("'", "''") + "'"
+                case x: Timestamp => "'" + dateFormat.format(x) + "'"
+                case null         => "NULL"
+                case x            => x
               }
               sb.append(columnValues.mkString(", "))
               sb.append(");\n")
@@ -174,7 +182,7 @@ object JDBCUtil {
 
     private def childTables(meta: DatabaseMetaData, tableName: String): Seq[String] = {
       val normalizedTableName =
-        if(meta.getDatabaseProductName == "PostgreSQL"){
+        if (meta.getDatabaseProductName == "PostgreSQL") {
           tableName.toLowerCase
         } else {
           tableName
@@ -184,7 +192,7 @@ object JDBCUtil {
         val children = new ListBuffer[String]
         while (rs.next) {
           val childTableName = rs.getString("FKTABLE_NAME").toUpperCase
-          if(!children.contains(childTableName)){
+          if (!children.contains(childTableName)) {
             children += childTableName
             children ++= childTables(meta, childTableName)
           }
@@ -193,22 +201,22 @@ object JDBCUtil {
       }
     }
 
-
     private def allTablesOrderByDependencies(meta: DatabaseMetaData): Seq[String] = {
       val tables = allTableNames.map { tableName =>
-        val result = TableDependency(tableName, childTables(meta, tableName))
-        result
+        TableDependency(tableName, childTables(meta, tableName))
       }
 
       val edges = tables.flatMap { table =>
-        table.children.map { child => (table.tableName, child) }
+        table.children.map { child =>
+          (table.tableName, child)
+        }
       }
 
-      tsort(edges).toSeq
+      val ordered = tsort(edges).toSeq
+      val orphans = tables.collect { case x if !ordered.contains(x.tableName) => x.tableName }
+
+      ordered ++ orphans
     }
-
-    case class TableDependency(tableName: String, children: Seq[String])
-
 
     def tsort[A](edges: Traversable[(A, A)]): Iterable[A] = {
       @tailrec
@@ -228,5 +236,7 @@ object JDBCUtil {
       tsort(toPred, Seq())
     }
   }
+
+  private case class TableDependency(tableName: String, children: Seq[String])
 
 }

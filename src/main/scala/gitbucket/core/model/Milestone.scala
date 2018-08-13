@@ -1,7 +1,7 @@
 package gitbucket.core.model
 
 trait MilestoneComponent extends TemplateComponent { self: Profile =>
-  import profile.simple._
+  import profile.api._
   import self._
 
   lazy val Milestones = TableQuery[Milestones]
@@ -9,13 +9,15 @@ trait MilestoneComponent extends TemplateComponent { self: Profile =>
   class Milestones(tag: Tag) extends Table[Milestone](tag, "MILESTONE") with MilestoneTemplate {
     override val milestoneId = column[Int]("MILESTONE_ID", O AutoInc)
     val title = column[String]("TITLE")
-    val description = column[String]("DESCRIPTION")
-    val dueDate = column[java.util.Date]("DUE_DATE")
-    val closedDate = column[java.util.Date]("CLOSED_DATE")
-    def * = (userName, repositoryName, milestoneId, title, description.?, dueDate.?, closedDate.?) <> (Milestone.tupled, Milestone.unapply)
+    val description = column[Option[String]]("DESCRIPTION")
+    val dueDate = column[Option[java.util.Date]]("DUE_DATE")
+    val closedDate = column[Option[java.util.Date]]("CLOSED_DATE")
+    def * =
+      (userName, repositoryName, milestoneId, title, description, dueDate, closedDate) <> (Milestone.tupled, Milestone.unapply)
 
     def byPrimaryKey(owner: String, repository: String, milestoneId: Int) = byMilestone(owner, repository, milestoneId)
-    def byPrimaryKey(userName: Column[String], repositoryName: Column[String], milestoneId: Column[Int]) = byMilestone(userName, repositoryName, milestoneId)
+    def byPrimaryKey(userName: Rep[String], repositoryName: Rep[String], milestoneId: Rep[Int]) =
+      byMilestone(userName, repositoryName, milestoneId)
   }
 }
 

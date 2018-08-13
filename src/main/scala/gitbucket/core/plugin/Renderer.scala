@@ -3,6 +3,7 @@ package gitbucket.core.plugin
 import gitbucket.core.controller.Context
 import gitbucket.core.service.RepositoryService
 import gitbucket.core.view.Markdown
+import gitbucket.core.view.helpers.urlLink
 import play.twirl.api.Html
 
 /**
@@ -20,25 +21,22 @@ trait Renderer {
 object MarkdownRenderer extends Renderer {
   override def render(request: RenderRequest): Html = {
     import request._
-    Html(Markdown.toHtml(
-      markdown         = fileContent,
-      repository       = repository,
-      enableWikiLink   = enableWikiLink,
-      enableRefsLink   = enableRefsLink,
-      enableAnchor     = enableAnchor,
-      enableLineBreaks = false
-    )(context))
+    Html(
+      Markdown.toHtml(
+        markdown = fileContent,
+        repository = repository,
+        enableWikiLink = enableWikiLink,
+        enableRefsLink = enableRefsLink,
+        enableAnchor = enableAnchor,
+        enableLineBreaks = false
+      )(context)
+    )
   }
 }
 
 object DefaultRenderer extends Renderer {
   override def render(request: RenderRequest): Html = {
-    import request._
-    Html(
-      s"<tt>${
-        fileContent.split("(\\r\\n)|\\n").map(xml.Utility.escape(_)).mkString("<br/>")
-      }</tt>"
-    )
+    Html(s"""<tt><pre class="plain">${urlLink(request.fileContent)}</pre></tt>""")
   }
 }
 

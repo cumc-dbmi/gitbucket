@@ -1,7 +1,7 @@
 package gitbucket.core.model
 
 trait ActivityComponent extends TemplateComponent { self: Profile =>
-  import profile.simple._
+  import profile.api._
   import self._
 
   lazy val Activities = TableQuery[Activities]
@@ -13,7 +13,8 @@ trait ActivityComponent extends TemplateComponent { self: Profile =>
     val message = column[String]("MESSAGE")
     val additionalInfo = column[String]("ADDITIONAL_INFO")
     val activityDate = column[java.util.Date]("ACTIVITY_DATE")
-    def * = (userName, repositoryName, activityUserName, activityType, message, additionalInfo.?, activityDate, activityId) <> (Activity.tupled, Activity.unapply)
+    def * =
+      (userName, repositoryName, activityUserName, activityType, message, additionalInfo.?, activityDate, activityId) <> (Activity.tupled, Activity.unapply)
   }
 }
 

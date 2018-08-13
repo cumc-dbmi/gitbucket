@@ -1,7 +1,7 @@
 package gitbucket.core.model
 
 trait AccountComponent { self: Profile =>
-  import profile.simple._
+  import profile.api._
   import self._
 
   lazy val Accounts = TableQuery[Accounts]
@@ -19,7 +19,23 @@ trait AccountComponent { self: Profile =>
     val image = column[String]("IMAGE")
     val groupAccount = column[Boolean]("GROUP_ACCOUNT")
     val removed = column[Boolean]("REMOVED")
-    def * = (userName, fullName, mailAddress, password, isAdmin, url.?, registeredDate, updatedDate, lastLoginDate.?, image.?, groupAccount, removed) <> (Account.tupled, Account.unapply)
+    val description = column[String]("DESCRIPTION")
+    def * =
+      (
+        userName,
+        fullName,
+        mailAddress,
+        password,
+        isAdmin,
+        url.?,
+        registeredDate,
+        updatedDate,
+        lastLoginDate.?,
+        image.?,
+        groupAccount,
+        removed,
+        description.?
+      ) <> (Account.tupled, Account.unapply)
   }
 }
 
@@ -35,5 +51,6 @@ case class Account(
   lastLoginDate: Option[java.util.Date],
   image: Option[String],
   isGroupAccount: Boolean,
-  isRemoved: Boolean
+  isRemoved: Boolean,
+  description: Option[String]
 )

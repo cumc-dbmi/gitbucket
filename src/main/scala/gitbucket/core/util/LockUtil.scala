@@ -2,7 +2,7 @@ package gitbucket.core.util
 
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.locks.{ReentrantLock, Lock}
-import ControlUtil._
+import SyntaxSugars._
 
 object LockUtil {
 
@@ -15,7 +15,7 @@ object LockUtil {
    * Returns the lock object for the specified repository.
    */
   private def getLockObject(key: String): Lock = synchronized {
-    if(!locks.containsKey(key)){
+    if (!locks.containsKey(key)) {
       locks.put(key, new ReentrantLock())
     }
     locks.get(key)
@@ -24,7 +24,7 @@ object LockUtil {
   /**
    * Synchronizes a given function which modifies the working copy of the wiki repository.
    */
-  def lock[T](key: String)(f: => T): T = defining(getLockObject(key)){ lock =>
+  def lock[T](key: String)(f: => T): T = defining(getLockObject(key)) { lock =>
     try {
       lock.lock()
       f

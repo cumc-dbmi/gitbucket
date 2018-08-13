@@ -16,16 +16,18 @@ class PluginAssetsServlet extends HttpServlet {
     val path = req.getRequestURI.substring(req.getContextPath.length)
 
     assetsMappings
-      .find    { case (prefix, _, _) => path.startsWith("/plugin-assets" + prefix) }
-      .flatMap { case (prefix, resourcePath, classLoader) =>
-        val resourceName = path.substring(("/plugin-assets" + prefix).length)
-        Option(classLoader.getResourceAsStream(resourcePath.replaceFirst("^/", "") + resourceName))
+      .find { case (prefix, _, _) => path.startsWith("/plugin-assets" + prefix) }
+      .flatMap {
+        case (prefix, resourcePath, classLoader) =>
+          val resourceName = path.substring(("/plugin-assets" + prefix).length)
+          Option(classLoader.getResourceAsStream(resourcePath.stripPrefix("/") + resourceName))
       }
       .map { in =>
         try {
           val bytes = IOUtils.toByteArray(in)
           resp.setContentLength(bytes.length)
-          resp.setContentType(FileUtil.getContentType(path, bytes))
+          resp.setContentType(FileUtil.getMimeType(path, bytes))
+          resp.setHeader("Cache-Control", "max-age=3600")
           resp.getOutputStream.write(bytes)
         } finally {
           in.close()

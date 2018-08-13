@@ -1,31 +1,30 @@
 package gitbucket.core.util
 
 import java.io.File
-import ControlUtil._
-import org.apache.commons.io.FileUtils
 
 /**
- * Provides directories used by GitBucket.
+ * Provides directory locations used by GitBucket.
  */
 object Directory {
 
   val GitBucketHome = (System.getProperty("gitbucket.home") match {
     // -Dgitbucket.home=<path>
-    case path if(path != null) => new File(path)
-    case _ => scala.util.Properties.envOrNone("GITBUCKET_HOME") match {
-      // environment variable GITBUCKET_HOME
-      case Some(env) => new File(env)
-      // default is HOME/.gitbucket
-      case None => {
-        val oldHome = new File(System.getProperty("user.home"), "gitbucket")
-        if(oldHome.exists && oldHome.isDirectory && new File(oldHome, "version").exists){
-          //FileUtils.moveDirectory(oldHome, newHome)
-          oldHome
-        } else {
-          new File(System.getProperty("user.home"), ".gitbucket")
+    case path if (path != null) => new File(path)
+    case _ =>
+      scala.util.Properties.envOrNone("GITBUCKET_HOME") match {
+        // environment variable GITBUCKET_HOME
+        case Some(env) => new File(env)
+        // default is HOME/.gitbucket
+        case None => {
+          val oldHome = new File(System.getProperty("user.home"), "gitbucket")
+          if (oldHome.exists && oldHome.isDirectory && new File(oldHome, "version").exists) {
+            //FileUtils.moveDirectory(oldHome, newHome)
+            oldHome
+          } else {
+            new File(System.getProperty("user.home"), ".gitbucket")
+          }
         }
       }
-    }
   }).getAbsolutePath
 
   val GitBucketConf = new File(GitBucketHome, "gitbucket.conf")
@@ -45,15 +44,40 @@ object Directory {
     new File(s"${RepositoryHome}/${owner}/${repository}.git")
 
   /**
+   * Directory for repository files.
+   */
+  def getRepositoryFilesDir(owner: String, repository: String): File =
+    new File(s"${RepositoryHome}/${owner}/${repository}")
+
+  /**
    * Directory for files which are attached to issue.
    */
   def getAttachedDir(owner: String, repository: String): File =
-    new File(s"${RepositoryHome}/${owner}/${repository}/comments")
+    new File(getRepositoryFilesDir(owner, repository), "comments")
+
+  /**
+   * Directory for released files
+   */
+  def getReleaseFilesDir(owner: String, repository: String): File =
+    new File(getRepositoryFilesDir(owner, repository), "releases")
+
+  /**
+   * Directory for files which are attached to issue.
+   */
+  def getLfsDir(owner: String, repository: String): File =
+    new File(getRepositoryFilesDir(owner, repository), "lfs")
+
+  /**
+   * Directory for files which store diff fragment
+   */
+  def getDiffDir(owner: String, repository: String): File =
+    new File(getRepositoryFilesDir(owner, repository), "diff")
 
   /**
    * Directory for uploaded files by the specified user.
    */
-  def getUserUploadDir(userName: String): File = new File(s"${GitBucketHome}/data/${userName}/files")
+  def getUserUploadDir(userName: String): File =
+    new File(s"${GitBucketHome}/data/${userName}/files")
 
   /**
    * Root of temporary directories for the upload file.
@@ -70,14 +94,9 @@ object Directory {
   /**
    * Root of plugin cache directory. Plugin repositories are cloned into this directory.
    */
-  def getPluginCacheDir(): File = new File(s"${TemporaryHome}/_plugins")
+  def getPluginCacheDir(): File =
+    new File(s"${TemporaryHome}/_plugins")
 
-  /**
-   * Temporary directory which is used to create an archive to download repository contents.
-   */
-  def getDownloadWorkDir(owner: String, repository: String, sessionId: String): File = 
-    new File(getTemporaryDir(owner, repository), s"download/${sessionId}")
-  
   /**
    * Substance directory of the wiki repository.
    */

@@ -6,7 +6,7 @@ import javax.servlet.{ServletContextEvent, ServletContextListener}
 
 import gitbucket.core.service.SystemSettingsService
 import gitbucket.core.service.SystemSettingsService.SshAddress
-import gitbucket.core.util.{Directory}
+import gitbucket.core.util.Directory
 import org.apache.sshd.server.keyprovider.SimpleGeneratorHostKeyProvider
 import org.slf4j.LoggerFactory
 
@@ -22,12 +22,14 @@ object SshServer {
     provider.setOverwriteAllowed(false)
     server.setKeyPairProvider(provider)
     server.setPublickeyAuthenticator(new PublicKeyAuthenticator(sshAddress.genericUser))
-    server.setCommandFactory(new GitCommandFactory(baseUrl))
+    server.setCommandFactory(
+      new GitCommandFactory(baseUrl, Some(s"${sshAddress.genericUser}@${sshAddress.host}:${sshAddress.port}"))
+    )
     server.setShellFactory(new NoShell(sshAddress))
   }
 
   def start(sshAddress: SshAddress, baseUrl: String) = {
-    if(active.compareAndSet(false, true)){
+    if (active.compareAndSet(false, true)) {
       configure(sshAddress, baseUrl)
       server.start()
       logger.info(s"Start SSH Server Listen on ${server.getPort}")
@@ -35,7 +37,7 @@ object SshServer {
   }
 
   def stop() = {
-    if(active.compareAndSet(true, false)){
+    if (active.compareAndSet(true, false)) {
       server.stop(true)
       logger.info("SSH Server is stopped.")
     }
@@ -57,13 +59,12 @@ class SshServerListener extends ServletContextListener with SystemSettingsServic
   override def contextInitialized(sce: ServletContextEvent): Unit = {
     val settings = loadSystemSettings()
     if (settings.sshAddress.isDefined && settings.baseUrl.isEmpty) {
-    	logger.error("Could not start SshServer because the baseUrl is not configured.")
+      logger.error("Could not start SshServer because the baseUrl is not configured.")
     }
     for {
       sshAddress <- settings.sshAddress
-      baseUrl    <- settings.baseUrl
-    }
-    SshServer.start(sshAddress, baseUrl)
+      baseUrl <- settings.baseUrl
+    } SshServer.start(sshAddress, baseUrl)
   }
 
   override def contextDestroyed(sce: ServletContextEvent): Unit = {

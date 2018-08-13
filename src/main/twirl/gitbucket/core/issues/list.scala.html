@@ -3,12 +3,14 @@
   page: Int,
   collaborators: List[String],
   milestones: List[gitbucket.core.model.Milestone],
+  priorities: List[gitbucket.core.model.Priority],
   labels: List[gitbucket.core.model.Label],
   openCount: Int,
   closedCount: Int,
   condition: gitbucket.core.service.IssuesService.IssueSearchCondition,
   repository: gitbucket.core.service.RepositoryService.RepositoryInfo,
-  hasWritePermission: Boolean)(implicit context: gitbucket.core.controller.Context)
+  isEditable: Boolean,
+  isManageable: Boolean)(implicit context: gitbucket.core.controller.Context)
 @import gitbucket.core.view.helpers
 @gitbucket.core.html.main((if(target == "issues") "Issues" else "Pull requests") + s" - ${repository.owner}/${repository.name}", Some(repository)){
   @gitbucket.core.html.menu(target, repository){
@@ -20,18 +22,25 @@
         <a href="@condition.copy(state = "closed").toURL">Closed <span class="badge">@closedCount</span></a>
       </li>
     </ul>
-    <form method="GET" id="search-filter-form" class="form-inline pull-right">
-    @if(context.loginAccount.isDefined){
-      @if(target == "issues"){
-        <a class="btn btn-success" href="@helpers.url(repository)/issues/new">New issue</a>
+    <form method="GET" action="@helpers.url(repository)/search" id="search-filter-form" class="form-inline pull-right" autocomplete="off">
+      <div class="input-group">
+        <input type="text" class="form-control" name="q" placeholder="Search..."/>
+        <input type="hidden" name="type" value="@target"/>
+        <span class="input-group-btn">
+          <button type="submit" id="search-btn" class="btn btn-default"><i class="fa fa-search"></i></button>
+        </span>
+      </div>
+      @if(isEditable){
+        @if(target == "issues"){
+          <a class="btn btn-success" href="@helpers.url(repository)/issues/new">New issue</a>
+        }
+        @if(target == "pulls"){
+          <a class="btn btn-success" href="@helpers.url(repository)/compare">New pull request</a>
+        }
       }
-      @if(target == "pulls"){
-        <a class="btn btn-success" href="@helpers.url(repository)/compare">New pull request</a>
-      }
-    }
     </form>
-    @gitbucket.core.issues.html.listparts(target, issues, page, openCount, closedCount, condition, collaborators, milestones, labels, Some(repository), hasWritePermission)
-    @if(hasWritePermission){
+    @gitbucket.core.issues.html.listparts(target, issues, page, openCount, closedCount, condition, collaborators, milestones, priorities, labels, Some(repository), isManageable)
+    @if(isManageable){
       <form id="batcheditForm" method="POST">
         <input type="hidden" name="value"/>
         <input type="hidden" name="checked"/>
@@ -40,9 +49,10 @@
     }
   }
 }
-@if(hasWritePermission){
+@if(isManageable){
 <script>
 $(function(){
+  @*
   $('a.header-link').mouseover(function(e){
     var target = e.target;
     if(e.target.tagName != 'A'){
@@ -62,6 +72,7 @@ $(function(){
     $(target).children('img.header-icon-hover').css('display', 'none');
     $(target).children('img.header-icon'      ).css('display', 'inline');
   });
+  *@
 
   $('.table-issues input[type=checkbox]').change(function(){
     var all = $('.table-issues input[type=checkbox][value]');
@@ -108,6 +119,9 @@ $(function(){
   });
   $('a.toggle-milestone').click(function(){
     submitBatchEdit('@helpers.url(repository)/issues/batchedit/milestone', $(this).data('id'));
+  });
+  $('a.toggle-priority').click(function(){
+    submitBatchEdit('@helpers.url(repository)/issues/batchedit/priority', $(this).data('id'));
   });
 });
 </script>

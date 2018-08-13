@@ -14,6 +14,7 @@
         case "reopen_issue"      => detailActivity(activity, "issue-reopened")
         case "open_pullreq"      => detailActivity(activity, "git-pull-request")
         case "merge_pullreq"     => detailActivity(activity, "git-merge")
+        case "release"           => detailActivity(activity, "package")
         case "create_repository" => simpleActivity(activity, "repo")
         case "create_branch"     => simpleActivity(activity, "git-branch")
         case "delete_branch"     => simpleActivity(activity, "circle-slash")
@@ -66,7 +67,7 @@
   <div>
     <div class="muted small">@gitbucket.core.helper.html.datetimeago(activity.activityDate)</div>
     <div class="strong">
-      @helpers.avatar(activity.activityUserName, 16)
+      @helpers.avatarLink(activity.activityUserName, 16)
       @helpers.activityMessage(activity.message)
     </div>
     @activity.additionalInfo.map { additionalInfo =>
@@ -82,7 +83,7 @@
   <div>
     <div class="muted small">@gitbucket.core.helper.html.datetimeago(activity.activityDate)</div>
     <div class="strong">
-      @helpers.avatar(activity.activityUserName, 16)
+      @helpers.avatarLink(activity.activityUserName, 16)
       @helpers.activityMessage(activity.message)
     </div>
     @additionalInfo
@@ -96,7 +97,7 @@
   <div>
     <span class="muted small">@gitbucket.core.helper.html.datetimeago(activity.activityDate)</span>
     <div>
-      @helpers.avatar(activity.activityUserName, 16)
+      @helpers.avatarLink(activity.activityUserName, 16)
       @helpers.activityMessage(activity.message)
     </div>
   </div>

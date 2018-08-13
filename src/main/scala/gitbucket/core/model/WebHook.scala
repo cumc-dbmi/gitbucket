@@ -1,27 +1,9 @@
 package gitbucket.core.model
 
-trait WebHookComponent extends TemplateComponent { self: Profile =>
-  import profile.simple._
-
-  implicit val whContentTypeColumnType = MappedColumnType.base[WebHookContentType, String](whct => whct.code , code => WebHookContentType.valueOf(code))
-  
-  lazy val WebHooks = TableQuery[WebHooks]
-
-  class WebHooks(tag: Tag) extends Table[WebHook](tag, "WEB_HOOK") with BasicTemplate {
-    val url = column[String]("URL")
-    val token = column[Option[String]]("TOKEN", O.Nullable)
-    val ctype = column[WebHookContentType]("CTYPE", O.NotNull)
-    def * = (userName, repositoryName, url, ctype, token) <> ((WebHook.apply _).tupled, WebHook.unapply)
-
-    def byPrimaryKey(owner: String, repository: String, url: String) = byRepository(owner, repository) && (this.url === url.bind)
-  }
-}
-
-case class WebHookContentType(val code: String, val ctype: String)
+abstract sealed case class WebHookContentType(code: String, ctype: String)
 
 object WebHookContentType {
   object JSON extends WebHookContentType("json", "application/json")
-
   object FORM extends WebHookContentType("form", "application/x-www-form-urlencoded")
 
   val values: Vector[WebHookContentType] = Vector(JSON, FORM)
@@ -34,16 +16,15 @@ object WebHookContentType {
   def valueOpt(code: String): Option[WebHookContentType] = map.get(code)
 }
 
-case class WebHook(
-  userName: String,
-  repositoryName: String,
-  url: String,
-  ctype: WebHookContentType,
-  token: Option[String]
-)
+trait WebHook {
+  val url: String
+  val ctype: WebHookContentType
+  val token: Option[String]
+}
 
 object WebHook {
-  sealed class Event(var name: String)
+  abstract sealed class Event(val name: String)
+
   case object CommitComment extends Event("commit_comment")
   case object Create extends Event("create")
   case object Delete extends Event("delete")
@@ -63,9 +44,31 @@ object WebHook {
   case object Status extends Event("status")
   case object TeamAdd extends Event("team_add")
   case object Watch extends Event("watch")
-  object Event{
-    val values = List(CommitComment,Create,Delete,Deployment,DeploymentStatus,Fork,Gollum,IssueComment,Issues,Member,PageBuild,Public,PullRequest,PullRequestReviewComment,Push,Release,Status,TeamAdd,Watch)
-    private val map:Map[String,Event] = values.map(e => e.name -> e).toMap
+
+  object Event {
+    val values = List(
+      CommitComment,
+      Create,
+      Delete,
+      Deployment,
+      DeploymentStatus,
+      Fork,
+      Gollum,
+      IssueComment,
+      Issues,
+      Member,
+      PageBuild,
+      Public,
+      PullRequest,
+      PullRequestReviewComment,
+      Push,
+      Release,
+      Status,
+      TeamAdd,
+      Watch
+    )
+
+    private val map: Map[String, Event] = values.map(e => e.name -> e).toMap
     def valueOf(name: String): Event = map(name)
     def valueOpt(name: String): Option[Event] = map.get(name)
   }

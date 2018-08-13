@@ -28,11 +28,13 @@ class GitBucketCoreModuleSpec extends FunSuite {
     )
   }
 
-  ignore("Migration MySQL", ExternalDBTest) {
-    val config = aMysqldConfig(v5_7_10)
+  test("Migration MySQL", ExternalDBTest) {
+    val config = aMysqldConfig(v5_7_latest)
       .withPort(3306)
       .withUser("sa", "sa")
       .withCharset(Charset.UTF8)
+      .withServerVariable("log_syslog", 0)
+      .withServerVariable("bind-address", "127.0.0.1")
       .build()
 
     val mysqld = anEmbeddedMysql(config)
@@ -42,7 +44,7 @@ class GitBucketCoreModuleSpec extends FunSuite {
 
     try {
       new Solidbase().migrate(
-        DriverManager.getConnection("jdbc:mysql://localhost:3306/gitbucket", "sa", "sa"),
+        DriverManager.getConnection("jdbc:mysql://localhost:3306/gitbucket?useSSL=false", "sa", "sa"),
         Thread.currentThread().getContextClassLoader(),
         new MySQLDatabase(),
         new Module(GitBucketCoreModule.getModuleId, GitBucketCoreModule.getVersions)
@@ -52,14 +54,15 @@ class GitBucketCoreModuleSpec extends FunSuite {
     }
   }
 
-  ignore("Migration PostgreSQL", ExternalDBTest) {
+  test("Migration PostgreSQL", ExternalDBTest) {
     val runtime = PostgresStarter.getDefaultInstance()
     val config = new PostgresConfig(
       PRODUCTION,
       new Net("localhost", 5432),
       new Storage("gitbucket"),
       new Timeout(),
-      new Credentials("sa", "sa"))
+      new Credentials("sa", "sa")
+    )
 
     val exec = runtime.prepare(config)
     val process = exec.start()

@@ -1,18 +1,20 @@
 package gitbucket.core.service
 
-import gitbucket.core.util.{Directory, ControlUtil}
-import gitbucket.core.util.Implicits._
-import Directory._
-import ControlUtil._
-import SystemSettingsService._
 import javax.servlet.http.HttpServletRequest
+import com.nimbusds.jose.JWSAlgorithm
+import com.nimbusds.oauth2.sdk.auth.Secret
+import com.nimbusds.oauth2.sdk.id.{ClientID, Issuer}
+import gitbucket.core.service.SystemSettingsService._
+import gitbucket.core.util.ConfigUtil._
+import gitbucket.core.util.Directory._
+import gitbucket.core.util.SyntaxSugars._
 
 trait SystemSettingsService {
 
   def baseUrl(implicit request: HttpServletRequest): String = loadSystemSettings().baseUrl(request)
 
   def saveSystemSettings(settings: SystemSettings): Unit = {
-    defining(new java.util.Properties()){ props =>
+    defining(new java.util.Properties()) { props =>
       settings.baseUrl.foreach(x => props.setProperty(BaseURL, x.replaceFirst("/\\Z", "")))
       settings.information.foreach(x => props.setProperty(Information, x))
       props.setProperty(AllowAccountRegistration, settings.allowAccountRegistration.toString)
@@ -21,24 +23,25 @@ trait SystemSettingsService {
       props.setProperty(Gravatar, settings.gravatar.toString)
       props.setProperty(Notification, settings.notification.toString)
       settings.activityLogLimit.foreach(x => props.setProperty(ActivityLogLimit, x.toString))
-      props.setProperty(Ssh, settings.ssh.toString)
-      settings.sshHost.foreach(x => props.setProperty(SshHost, x.trim))
-      settings.sshPort.foreach(x => props.setProperty(SshPort, x.toString))
+      props.setProperty(SshEnabled, settings.ssh.enabled.toString)
+      settings.ssh.sshHost.foreach(x => props.setProperty(SshHost, x.trim))
+      settings.ssh.sshPort.foreach(x => props.setProperty(SshPort, x.toString))
       props.setProperty(UseSMTP, settings.useSMTP.toString)
-      if(settings.useSMTP) {
+      if (settings.useSMTP) {
         settings.smtp.foreach { smtp =>
           props.setProperty(SmtpHost, smtp.host)
           smtp.port.foreach(x => props.setProperty(SmtpPort, x.toString))
           smtp.user.foreach(props.setProperty(SmtpUser, _))
           smtp.password.foreach(props.setProperty(SmtpPassword, _))
           smtp.ssl.foreach(x => props.setProperty(SmtpSsl, x.toString))
+          smtp.starttls.foreach(x => props.setProperty(SmtpStarttls, x.toString))
           smtp.fromAddress.foreach(props.setProperty(SmtpFromAddress, _))
           smtp.fromName.foreach(props.setProperty(SmtpFromName, _))
         }
       }
       props.setProperty(LdapAuthentication, settings.ldapAuthentication.toString)
-      if(settings.ldapAuthentication){
-        settings.ldap.map { ldap =>
+      if (settings.ldapAuthentication) {
+        settings.ldap.foreach { ldap =>
           props.setProperty(LdapHost, ldap.host)
           ldap.port.foreach(x => props.setProperty(LdapPort, x.toString))
           ldap.bindDN.foreach(x => props.setProperty(LdapBindDN, x))
@@ -53,17 +56,31 @@ trait SystemSettingsService {
           ldap.keystore.foreach(x => props.setProperty(LdapKeystore, x))
         }
       }
-      using(new java.io.FileOutputStream(GitBucketConf)){ out =>
+      props.setProperty(OidcAuthentication, settings.oidcAuthentication.toString)
+      if (settings.oidcAuthentication) {
+        settings.oidc.foreach { oidc =>
+          props.setProperty(OidcIssuer, oidc.issuer.getValue)
+          props.setProperty(OidcClientId, oidc.clientID.getValue)
+          props.setProperty(OidcClientSecret, oidc.clientSecret.getValue)
+          oidc.jwsAlgorithm.foreach { x =>
+            props.setProperty(OidcJwsAlgorithm, x.getName)
+          }
+        }
+      }
+      props.setProperty(SkinName, settings.skinName.toString)
+      props.setProperty(ShowMailAddress, settings.showMailAddress.toString)
+      props.setProperty(PluginNetworkInstall, settings.pluginNetworkInstall.toString)
+
+      using(new java.io.FileOutputStream(GitBucketConf)) { out =>
         props.store(out, null)
       }
     }
   }
 
-
   def loadSystemSettings(): SystemSettings = {
-    defining(new java.util.Properties()){ props =>
-      if(GitBucketConf.exists){
-        using(new java.io.FileInputStream(GitBucketConf)){ in =>
+    defining(new java.util.Properties()) { props =>
+      if (GitBucketConf.exists) {
+        using(new java.io.FileInputStream(GitBucketConf)) { in =>
           props.load(in)
         }
       }
@@ -76,40 +93,65 @@ trait SystemSettingsService {
         getValue(props, Gravatar, false),
         getValue(props, Notification, false),
         getOptionValue[Int](props, ActivityLogLimit, None),
-        getValue(props, Ssh, false),
-        getOptionValue[String](props, SshHost, None).map(_.trim),
-        getOptionValue(props, SshPort, Some(DefaultSshPort)),
-        getValue(props, UseSMTP, getValue(props, Notification, false)),   // handle migration scenario from only notification to useSMTP
-        if(getValue(props, UseSMTP, getValue(props, Notification, false))){
-          Some(Smtp(
-            getValue(props, SmtpHost, ""),
-            getOptionValue(props, SmtpPort, Some(DefaultSmtpPort)),
-            getOptionValue(props, SmtpUser, None),
-            getOptionValue(props, SmtpPassword, None),
-            getOptionValue[Boolean](props, SmtpSsl, None),
-            getOptionValue(props, SmtpFromAddress, None),
-            getOptionValue(props, SmtpFromName, None)))
+        Ssh(
+          getValue(props, SshEnabled, false),
+          getOptionValue[String](props, SshHost, None).map(_.trim),
+          getOptionValue(props, SshPort, Some(DefaultSshPort))
+        ),
+        getValue(props, UseSMTP, getValue(props, Notification, false)), // handle migration scenario from only notification to useSMTP
+        if (getValue(props, UseSMTP, getValue(props, Notification, false))) {
+          Some(
+            Smtp(
+              getValue(props, SmtpHost, ""),
+              getOptionValue(props, SmtpPort, Some(DefaultSmtpPort)),
+              getOptionValue(props, SmtpUser, None),
+              getOptionValue(props, SmtpPassword, None),
+              getOptionValue[Boolean](props, SmtpSsl, None),
+              getOptionValue[Boolean](props, SmtpStarttls, None),
+              getOptionValue(props, SmtpFromAddress, None),
+              getOptionValue(props, SmtpFromName, None)
+            )
+          )
         } else {
           None
         },
         getValue(props, LdapAuthentication, false),
-        if(getValue(props, LdapAuthentication, false)){
-          Some(Ldap(
-            getValue(props, LdapHost, ""),
-            getOptionValue(props, LdapPort, Some(DefaultLdapPort)),
-            getOptionValue(props, LdapBindDN, None),
-            getOptionValue(props, LdapBindPassword, None),
-            getValue(props, LdapBaseDN, ""),
-            getValue(props, LdapUserNameAttribute, ""),
-            getOptionValue(props, LdapAdditionalFilterCondition, None),
-            getOptionValue(props, LdapFullNameAttribute, None),
-            getOptionValue(props, LdapMailAddressAttribute, None),
-            getOptionValue[Boolean](props, LdapTls, None),
-            getOptionValue[Boolean](props, LdapSsl, None),
-            getOptionValue(props, LdapKeystore, None)))
+        if (getValue(props, LdapAuthentication, false)) {
+          Some(
+            Ldap(
+              getValue(props, LdapHost, ""),
+              getOptionValue(props, LdapPort, Some(DefaultLdapPort)),
+              getOptionValue(props, LdapBindDN, None),
+              getOptionValue(props, LdapBindPassword, None),
+              getValue(props, LdapBaseDN, ""),
+              getValue(props, LdapUserNameAttribute, ""),
+              getOptionValue(props, LdapAdditionalFilterCondition, None),
+              getOptionValue(props, LdapFullNameAttribute, None),
+              getOptionValue(props, LdapMailAddressAttribute, None),
+              getOptionValue[Boolean](props, LdapTls, None),
+              getOptionValue[Boolean](props, LdapSsl, None),
+              getOptionValue(props, LdapKeystore, None)
+            )
+          )
         } else {
           None
-        }
+        },
+        getValue(props, OidcAuthentication, false),
+        if (getValue(props, OidcAuthentication, false)) {
+          Some(
+            OIDC(
+              getValue(props, OidcIssuer, ""),
+              getValue(props, OidcClientId, ""),
+              getValue(props, OidcClientSecret, ""),
+              getOptionValue(props, OidcJwsAlgorithm, None)
+            )
+          )
+        } else {
+          None
+        },
+        getValue(props, SkinName, "skin-blue"),
+        getValue(props, ShowMailAddress, false),
+        getValue(props, PluginNetworkInstall, false)
       )
     }
   }
@@ -118,6 +160,8 @@ trait SystemSettingsService {
 
 object SystemSettingsService {
   import scala.reflect.ClassTag
+
+  private val HttpProtocols = Vector("http", "https")
 
   case class SystemSettings(
     baseUrl: Option[String],
@@ -128,25 +172,45 @@ object SystemSettingsService {
     gravatar: Boolean,
     notification: Boolean,
     activityLogLimit: Option[Int],
-    ssh: Boolean,
-    sshHost: Option[String],
-    sshPort: Option[Int],
+    ssh: Ssh,
     useSMTP: Boolean,
     smtp: Option[Smtp],
     ldapAuthentication: Boolean,
-    ldap: Option[Ldap]){
-    def baseUrl(request: HttpServletRequest): String = baseUrl.fold(request.baseUrl)(_.stripSuffix("/"))
+    ldap: Option[Ldap],
+    oidcAuthentication: Boolean,
+    oidc: Option[OIDC],
+    skinName: String,
+    showMailAddress: Boolean,
+    pluginNetworkInstall: Boolean
+  ) {
 
-    def sshAddress:Option[SshAddress] =
-      for {
-        host <- sshHost if ssh
-      }
-      yield SshAddress(
-        host,
-        sshPort.getOrElse(DefaultSshPort),
-        "git"
-      )
+    def baseUrl(request: HttpServletRequest): String =
+      baseUrl.getOrElse(parseBaseUrl(request)).stripSuffix("/")
+
+    def parseBaseUrl(req: HttpServletRequest): String = {
+      val url = req.getRequestURL.toString
+      val path = req.getRequestURI
+      val contextPath = req.getContextPath
+      val len = url.length - path.length + contextPath.length
+
+      val base = url.substring(0, len).stripSuffix("/")
+      Option(req.getHeader("X-Forwarded-Proto"))
+        .map(_.toLowerCase())
+        .filter(HttpProtocols.contains)
+        .fold(base)(_ + base.dropWhile(_ != ':'))
+    }
+
+    def sshAddress: Option[SshAddress] = ssh.sshHost.collect {
+      case host if ssh.enabled =>
+        SshAddress(host, ssh.sshPort.getOrElse(DefaultSshPort), "git")
+    }
   }
+
+  case class Ssh(
+    enabled: Boolean,
+    sshHost: Option[String],
+    sshPort: Option[Int]
+  )
 
   case class Ldap(
     host: String,
@@ -160,7 +224,19 @@ object SystemSettingsService {
     mailAttribute: Option[String],
     tls: Option[Boolean],
     ssl: Option[Boolean],
-    keystore: Option[String])
+    keystore: Option[String]
+  )
+
+  case class OIDC(issuer: Issuer, clientID: ClientID, clientSecret: Secret, jwsAlgorithm: Option[JWSAlgorithm])
+  object OIDC {
+    def apply(issuer: String, clientID: String, clientSecret: String, jwsAlgorithm: Option[String]): OIDC =
+      new OIDC(
+        new Issuer(issuer),
+        new ClientID(clientID),
+        new Secret(clientSecret),
+        jwsAlgorithm.map(JWSAlgorithm.parse)
+      )
+  }
 
   case class Smtp(
     host: String,
@@ -168,13 +244,14 @@ object SystemSettingsService {
     user: Option[String],
     password: Option[String],
     ssl: Option[Boolean],
+    starttls: Option[Boolean],
     fromAddress: Option[String],
-    fromName: Option[String])
+    fromName: Option[String]
+  )
 
-  case class SshAddress(
-    host:String,
-    port:Int,
-    genericUser:String)
+  case class SshAddress(host: String, port: Int, genericUser: String)
+
+  case class Lfs(serverUrl: Option[String])
 
   val DefaultSshPort = 29418
   val DefaultSmtpPort = 25
@@ -188,7 +265,7 @@ object SystemSettingsService {
   private val Gravatar = "gravatar"
   private val Notification = "notification"
   private val ActivityLogLimit = "activity_log_limit"
-  private val Ssh = "ssh"
+  private val SshEnabled = "ssh"
   private val SshHost = "ssh.host"
   private val SshPort = "ssh.port"
   private val UseSMTP = "useSMTP"
@@ -197,6 +274,7 @@ object SystemSettingsService {
   private val SmtpUser = "smtp.user"
   private val SmtpPassword = "smtp.password"
   private val SmtpSsl = "smtp.ssl"
+  private val SmtpStarttls = "smtp.starttls"
   private val SmtpFromAddress = "smtp.from_address"
   private val SmtpFromName = "smtp.from_name"
   private val LdapAuthentication = "ldap_authentication"
@@ -212,24 +290,37 @@ object SystemSettingsService {
   private val LdapTls = "ldap.tls"
   private val LdapSsl = "ldap.ssl"
   private val LdapKeystore = "ldap.keystore"
+  private val OidcAuthentication = "oidc_authentication"
+  private val OidcIssuer = "oidc.issuer"
+  private val OidcClientId = "oidc.client_id"
+  private val OidcClientSecret = "oidc.client_secret"
+  private val OidcJwsAlgorithm = "oidc.jws_algorithm"
+  private val SkinName = "skinName"
+  private val ShowMailAddress = "showMailAddress"
+  private val PluginNetworkInstall = "plugin.networkInstall"
 
-  private def getValue[A: ClassTag](props: java.util.Properties, key: String, default: A): A =
-    defining(props.getProperty(key)){ value =>
-      if(value == null || value.isEmpty) default
-      else convertType(value).asInstanceOf[A]
-    }
+  private def getValue[A: ClassTag](props: java.util.Properties, key: String, default: A): A = {
+    getSystemProperty(key).getOrElse(getEnvironmentVariable(key).getOrElse {
+      defining(props.getProperty(key)) { value =>
+        if (value == null || value.isEmpty) {
+          default
+        } else {
+          convertType(value).asInstanceOf[A]
+        }
+      }
+    })
+  }
 
-  private def getOptionValue[A: ClassTag](props: java.util.Properties, key: String, default: Option[A]): Option[A] =
-    defining(props.getProperty(key)){ value =>
-      if(value == null || value.isEmpty) default
-      else Some(convertType(value)).asInstanceOf[Option[A]]
-    }
-
-  private def convertType[A: ClassTag](value: String) =
-    defining(implicitly[ClassTag[A]].runtimeClass){ c =>
-      if(c == classOf[Boolean])  value.toBoolean
-      else if(c == classOf[Int]) value.toInt
-      else value
-    }
+  private def getOptionValue[A: ClassTag](props: java.util.Properties, key: String, default: Option[A]): Option[A] = {
+    getSystemProperty(key).orElse(getEnvironmentVariable(key).orElse {
+      defining(props.getProperty(key)) { value =>
+        if (value == null || value.isEmpty) {
+          default
+        } else {
+          Some(convertType(value)).asInstanceOf[Option[A]]
+        }
+      }
+    })
+  }
 
 }

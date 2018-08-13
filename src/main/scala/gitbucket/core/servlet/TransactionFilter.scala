@@ -8,6 +8,7 @@ import org.scalatra.ScalatraBase
 import org.slf4j.LoggerFactory
 import slick.jdbc.JdbcBackend.{Database => SlickDatabase, Session}
 import gitbucket.core.util.Keys
+import gitbucket.core.model.Profile.profile.blockingApi._
 
 /**
  * Controls the transaction with the open session in view pattern.
@@ -21,15 +22,16 @@ class TransactionFilter extends Filter {
   def destroy(): Unit = {}
 
   def doFilter(req: ServletRequest, res: ServletResponse, chain: FilterChain): Unit = {
-    if(req.asInstanceOf[HttpServletRequest].getServletPath().startsWith("/assets/")){
-      // assets don't need transaction
+    val servletPath = req.asInstanceOf[HttpServletRequest].getServletPath()
+    if (servletPath.startsWith("/assets/") || servletPath == "/git" || servletPath == "/git-lfs") {
+      // assets and git-lfs don't need transaction
       chain.doFilter(req, res)
     } else {
       Database() withTransaction { session =>
         // Register Scalatra error callback to rollback transaction
         ScalatraBase.onFailure { _ =>
           logger.debug("Rolled back transaction")
-          session.rollback()
+          session.conn.rollback()
         }(req.asInstanceOf[HttpServletRequest])
 
         logger.debug("begin transaction")
@@ -64,7 +66,7 @@ object Database {
   }
 
   private val db: SlickDatabase = {
-    SlickDatabase.forDataSource(dataSource)
+    SlickDatabase.forDataSource(dataSource, Some(dataSource.getMaximumPoolSize))
   }
 
   def apply(): SlickDatabase = db
